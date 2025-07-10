@@ -1,0 +1,12 @@
+# Do not edit - changes here will be overwritten by Copier
+_commit: v1
+_src_path: gh:pydev-guide/pyrepo-copier
+author_email: p.shah.lab@gmail.com
+author_name: Pranav NM Shah
+github_username: shahpnmlab
+mode: tooling
+module_name: torch_tomo_slab
+project_name: torch-tomo-slab
+project_short_description: A simple Unet application to detect boundaries of tomographic
+    volumes
+

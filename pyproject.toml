@@ -1,0 +1,180 @@
+# https://peps.python.org/pep-0517/
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+# https://hatch.pypa.io/latest/config/metadata/
+#[tool.hatch.version]
+#source = "vcs"
+
+# read more about configuring hatch at:
+# https://hatch.pypa.io/latest/config/build/
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+# https://peps.python.org/pep-0621/
+[project]
+name = "torch-tomo-slab"
+#dynamic = ["version"]
+version = "0.0.1"
+description = "A PyTorch Lightning/SMP application to segment boundaries in tomographic volumes."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Pranav NM Shah", email = "p.shah.lab@gmail.com" }]
+# https://pypi.org/classifiers/
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Typing :: Typed",
+]
+
+# --- UPDATED DEPENDENCIES ---
+# Core dependencies required for the project to run.
+dependencies = [
+    "torch",
+    "pytorch-lightning",
+    "segmentation-models-pytorch",
+    "torchio",
+    "mrcfile",
+    "imodmodel",
+    "scikit-learn",
+    "pandas",
+    "numpy",
+    "matplotlib", # For visualization in notebooks or scripts
+]
+
+# https://peps.python.org/pep-0621/#dependencies-optional-dependencies
+# add dependencies for "extra" features here.  Not dev dependencies.
+# [project.optional-dependencies]
+# name = ["dependency"]
+
+[project.urls]
+homepage = "https://github.com/shahpnmlab/torch-tomo-slab"
+repository = "https://github.com/shahpnmlab/torch-tomo-slab"
+
+# --- UPDATED ENTRY POINTS ---
+# This makes your scripts runnable from the command line after installation
+[project.scripts]
+tomo-slab-create-masks = "torch_tomo_slab.scripts.p01_mask_preparation:main_cli"
+tomo-slab-prepare-data = "torch_tomo_slab.scripts.p02_data_preparation:main_cli"
+tomo-slab-train = "torch_tomo_slab.train:run_training"
+
+
+# https://peps.python.org/pep-0735/
+# setup with `uv sync` or `pip install -e . --group dev`
+[dependency-groups]
+test = ["pytest", "pytest-cov"]
+dev = [
+    { include-group = "test" },
+    "ipython",
+    "mypy",
+    "pdbpp",
+    "pre-commit-uv",
+    "rich",
+    "ruff",
+]
+
+[tool.uv.sources]
+torch-tomo-slab = { workspace = true, editable = true }
+
+# https://docs.astral.sh/ruff
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+src = ["src"]
+fix = true
+
+[tool.ruff.lint]
+pydocstyle = { convention = "numpy" }
+select = [
+    "E", "W", "F", "D", "I", "UP", "C4", "B", "A001", "RUF", "TC", "TID",
+]
+ignore = [
+    "D401", # First line should be in imperative mood (remove to opt in)
+    "D417", # Missing argument descriptions in Docstrings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D", "S"]
+"docs/*.py" = ["D", "A"]
+"src/torch_tomo_slab/scripts/*.py" = ["D"] # Relax docstring rules for scripts
+
+# https://docs.astral.sh/ruff/formatter/
+[tool.ruff.format]
+docstring-code-format = true
+skip-magic-trailing-comma = false
+
+# https://docs.pytest.org/
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = ["--color=yes", "-ra"]
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+# https://mypy.readthedocs.io/en/stable/config_file.html
+[tool.mypy]
+files = "src/torch_tomo_slab"
+strict = true
+disallow_any_generics = false
+disallow_subclassing_any = false
+show_error_codes = true
+pretty = true
+
+# Module specific overrides for libraries that may not have perfect type hints
+[[tool.mypy.overrides]]
+module = [
+    "imodmodel.*",
+    "mrcfile.*",
+    "torchio.*",
+    "segmentation_models_pytorch.*",
+    "sklearn.*",
+    "pandas.*",
+]
+ignore_missing_imports = true
+
+# https://coverage.readthedocs.io/
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@overload",
+    "except ImportError",
+    "raise AssertionError",
+    "\\.\\.\\.",
+    "if __name__ == .__main__.:",
+    "def __repr__",
+    "raise NotImplementedError()",
+    "pass",
+]
+
+[tool.coverage.run]
+source = ["torch_tomo_slab"]
+omit = [
+    "src/torch_tomo_slab/scripts/*", # Often not useful to check coverage on top-level scripts
+]
+
+# https://github.com/mgedmin/check-manifest#configuration
+[tool.check-manifest]
+ignore = [
+    ".pre-commit-config.yaml",
+    ".ruff_cache/**/*",
+    "tests/**/*",
+    "uv.lock",
+    ".vscode/**/*",
+    "lightning_logs/**/*",
+]
+
+# https://github.com/crate-ci/typos/blob/master/docs/reference.md
+[tool.typos.default]
+extend-ignore-identifiers-re = []

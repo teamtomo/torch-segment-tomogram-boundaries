@@ -1,0 +1,71 @@
+from pathlib import Path
+
+BASE_DATA_PATH = Path("/Users/ps/data/wip/torch-tomo-slab")  # Adjust this to your project's root data folder
+
+# Input data for script 01 and 02
+RAW_DATA_PATH = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
+IMOD_MODEL_DIR = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
+REFERENCE_TOMOGRAM_DIR = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
+
+# Output data from scripts
+MASK_OUTPUT_DIR = RAW_DATA_PATH / "mask_data"
+PREPARED_DATA_DIR = BASE_DATA_PATH / "prepared_data"  # Output of script 02, input for train.py
+
+# Number of 2D slices to extract from each 3D volume
+NUM_SECTIONS_PER_VOLUME = 50
+
+# Kernel size for the local variance calculation
+LOCAL_VARIANCE_KERNEL_SIZE = 5
+
+# --- TRAINING PARAMETERS ---
+# Model Architecture (from segmentation-models-pytorch)
+MODEL_ARCH = "Unet"
+MODEL_ENCODER = "resnet34"
+
+# Training Hyperparameters
+LEARNING_RATE = 1e-3
+LOSS_FUNCTION = "dice+bce"  # Options: 'dice', 'bce', 'dice+bce'
+MAX_EPOCHS = 100
+
+# Dataloader & Augmentation
+PATCH_SIZE = 64
+OVERLAP = 32
+VALIDATION_FRACTION = 0.2
+BATCH_SIZE = 8
+NUM_WORKERS = 4  # Adjust based on your machine's CPUs
+
+# Patch Sampling Strategy
+SAMPLES_PER_VOLUME = 100  # Number of patches to extract per 2D image
+ALPHA_FOR_DROPPING = 0.75  # Controls how aggressively to drop empty patches. 0=no drop, 1=aggressive.
+VALIDATION_PATCH_SAMPLING = False  # Set to False for validation on full images, True for patches
+
+# --- TRAINER CONFIGURATION ---
+ACCELERATOR = "auto"  # Let PyTorch Lightning detect GPU/MPS/CPU
+DEVICES = 1
+LOG_EVERY_N_STEPS = 10
+CHECK_VAL_EVERY_N_EPOCH = 5
+
+# --- NEW: LEARNING RATE SCHEDULER CONFIGURATION ---
+USE_LR_SCHEDULER = True
+# Number of epochs to slowly ramp up the learning rate from 0
+SCHEDULER_WARMUP_EPOCHS = 10
+# The maximum learning rate is the one we already defined
+# SCHEDULER_MAX_LR = LEARNING_RATE
+# The minimum learning rate at the end of the cosine cycle
+SCHEDULER_MIN_LR = 1e-6
+
+# --- CALLBACK CONFIGURATION ---
+# The metric to monitor for checkpointing and early stopping
+MONITOR_METRIC = "val_loss"
+
+# Early Stopping configuration
+EARLY_STOPPING_PATIENCE = 15  # Stop after 15 validation epochs with no improvement
+EARLY_STOPPING_MIN_DELTA = 0.001 # Minimum change to be considered an improvement
+
+# Model Checkpoint configuration
+CHECKPOINT_SAVE_TOP_K = 1 # Save only the single best model
+
+# Stochastic Weight Averaging (SWA) configuration
+USE_SWA = True
+SWA_LEARNING_RATE = 1e-4 # SWA learning rate is typically smaller
+SWA_START_EPOCH_FRACTION = 0.75 # Start SWA in the last 25% of epochs
