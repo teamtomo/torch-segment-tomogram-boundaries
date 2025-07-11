@@ -1,12 +1,15 @@
-from typing import Tuple, List
-
+from typing import Tuple, List, Dict
 import numpy as np
-import torchio as tio
 import torch
+from torch.utils.data import Dataset
+import torchio as tio
 
 
 class WeightedPatcheSampler:
-    """Custom patch sampler that implements intelligent empty patch dropping."""
+    """
+    Custom patch sampler that uses torchio's backend for grid sampling
+    but operates on standard torch tensors.
+    """
 
     def __init__(
             self,
@@ -20,17 +23,35 @@ class WeightedPatcheSampler:
         self.alpha_for_dropping = alpha_for_dropping
         self.overlap = np.array([overlap, overlap, 0], dtype=int)
 
-    def __call__(self, subject: tio.Subject) -> List[tio.Subject]:
-        """Generate patches for a subject with intelligent dropping."""
-        # ... (code before the loop is fine)
-        label_tensor = subject.label.data.squeeze()
-        f0 = (label_tensor == 0).sum().item()
-        f1 = label_tensor.numel() - f0
+    def __call__(self, sample: Dict[str, torch.Tensor]) -> List[Dict[str, torch.Tensor]]:
+        """
+        Generates patches from a single sample (image-label dict) with intelligent dropping.
+        """
+        image_3d = sample['image']
+        label_3d = sample['label']
+
+        if image_3d.ndim != 3:
+            raise ValueError(f"Sampler expected a 3D image tensor (C, H, W), but got {image_3d.ndim}D.")
+
+        image_4d = image_3d.unsqueeze(-1)
+        label_4d = label_3d.unsqueeze(-1)
+
+        subject = tio.Subject(
+            image=tio.ScalarImage(tensor=image_4d),
+            label=tio.LabelMap(tensor=label_4d),
+        )
+
+        label_tensor_for_stats = subject.label.data.squeeze()
+        f0 = (label_tensor_for_stats == 0).sum().item()
+        f1 = label_tensor_for_stats.numel() - f0
+
         drop_probability = 0.0
         if f0 > 0 and f1 > 0:
-            drop_probability = torch.clip(
-                1 - self.alpha_for_dropping * (f1 / f0), min=0.0, max=1.0
-            ).item()
+            # --- THIS IS THE FIX ---
+            # The calculation results in a standard Python float.
+            # We must use standard Python functions to clamp it, not torch.clip.
+            unclamped_prob = 1 - self.alpha_for_dropping * (f1 / f0)
+            drop_probability = min(1.0, max(0.0, unclamped_prob))
 
         grid_sampler = tio.inference.GridSampler(
             subject=subject,
@@ -39,42 +60,40 @@ class WeightedPatcheSampler:
         )
 
         patches = []
-        patch_generator = iter(grid_sampler)
+        for patch_subject in grid_sampler:
+            patch_label = patch_subject.label.data.squeeze()
+            is_empty_patch = patch_label.sum().item() == 0
+            if is_empty_patch and torch.rand(1).item() < drop_probability:
+                continue
 
-        for _ in range(self.samples_per_volume * 2):
-            try:
-                patch = next(patch_generator)
-                patch_label = patch.label.data.squeeze()
+            patches.append({
+                'image': patch_subject.image.data.squeeze(-1),
+                'label': patch_subject.label.data.squeeze(-1)
+            })
+            if len(patches) >= self.samples_per_volume:
+                break
+
+        if len(patches) < self.samples_per_volume:
+            uniform_sampler = tio.UniformSampler(self.patch_size)
+            for _ in range(self.samples_per_volume - len(patches)):
+                random_patch = next(uniform_sampler(subject))
+                patch_label = random_patch.label.data.squeeze()
                 is_empty_patch = patch_label.sum().item() == 0
                 if is_empty_patch and torch.rand(1).item() < drop_probability:
                     continue
-                patches.append(patch)
-                if len(patches) >= self.samples_per_volume:
-                    break
-            except StopIteration:
-                # This block is entered when the GridSampler runs out of patches.
-                uniform_sampler = tio.UniformSampler(self.patch_size)
-                while len(patches) < self.samples_per_volume:
-                    random_patch_generator = uniform_sampler(subject)
-                    patch = next(random_patch_generator)
+                patches.append({
+                    'image': random_patch.image.data.squeeze(-1),
+                    'label': random_patch.label.data.squeeze(-1)
+                })
 
-                    patch_label = patch.label.data.squeeze()
-                    is_empty_patch = patch_label.sum().item() == 0
-
-                    if is_empty_patch and torch.rand(1).item() < drop_probability:
-                        continue
-
-                    patches.append(patch)
-                break
         return patches
 
 
 class CustomPatchDataset(torch.utils.data.IterableDataset):
-    """Custom dataset that yields patches with intelligent sampling."""
-
+    # ... (This class is correct and remains unchanged) ...
     def __init__(
             self,
-            subjects_dataset: tio.SubjectsDataset,
+            subjects_dataset: Dataset,
             patch_sampler: WeightedPatcheSampler,
             shuffle_subjects: bool = True,
     ):
@@ -83,16 +102,18 @@ class CustomPatchDataset(torch.utils.data.IterableDataset):
         self.shuffle_subjects = shuffle_subjects
 
     def __iter__(self):
-        # Get subject indices
         subject_indices = list(range(len(self.subjects_dataset)))
         if self.shuffle_subjects:
-            torch.manual_seed(torch.initial_seed())  # For reproducibility
-            subject_indices = torch.randperm(len(subject_indices)).tolist()
-
-        # Generate patches from each subject
+            worker_info = torch.utils.data.get_worker_info()
+            seed = torch.initial_seed()
+            if worker_info is not None:
+                seed += worker_info.id
+            generator = torch.Generator()
+            generator.manual_seed(seed)
+            perm = torch.randperm(len(subject_indices), generator=generator).tolist()
+            subject_indices = [subject_indices[i] for i in perm]
         for subject_idx in subject_indices:
-            subject = self.subjects_dataset[subject_idx]
-            patches = self.patch_sampler(subject)
-
+            subject_sample = self.subjects_dataset[subject_idx]
+            patches = self.patch_sampler(subject_sample)
             for patch in patches:
                 yield patch

@@ -1,139 +1,92 @@
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torchio as tio
-import segmentation_models_pytorch as smp
-from torch.optim.lr_scheduler import OneCycleLR
-from torch_tomo_slab import config
 import torch.nn as nn
-
-
-class CombinedLoss(nn.Module):
-    """
-    A loss function that is a weighted sum of two individual losses.
-    """
-
-    def __init__(self, loss1, loss2, weight1=0.5, weight2=0.5):
-        super().__init__()
-        self.loss1 = loss1
-        self.loss2 = loss2
-        self.weight1 = weight1
-        self.weight2 = weight2
-        loss1_name = self.loss1.__class__.__name__
-        loss2_name = self.loss2.__class__.__name__
-
-        self.name = f"{self.weight1}*{loss1_name} + {self.weight2}*{loss2_name}"
-
-    def forward(self, pred, target):
-        loss_val1 = self.loss1(pred, target)
-        loss_val2 = self.loss2(pred, target)
-        return self.weight1 * loss_val1 + self.weight2 * loss_val2
+from torch_tomo_slab import config
 
 class SegmentationModel(pl.LightningModule):
-    """PyTorch Lightning module for 2-channel segmentation."""
+    """
+    PyTorch Lightning module for 2-channel segmentation.
+    This module is agnostic to the specific loss function used.
+    """
 
     def __init__(
             self,
-            model: torch.nn.Module,
+            model: nn.Module,
+            loss_function: nn.Module,
+            num_train_samples: int,
             learning_rate: float = 1e-3,
-            loss_function: str = 'dice',
     ):
         super().__init__()
+        self.save_hyperparameters(ignore=['model', 'loss_function'])
         self.model = model
-        self.learning_rate = learning_rate
-        self.save_hyperparameters(ignore=['model'])
-
-        self.total_steps = 0
-        if loss_function == 'dice':
-            self.criterion = smp.losses.DiceLoss(mode='binary', from_logits=True)
-        elif loss_function == 'bce':
-            self.criterion = smp.losses.SoftBCEWithLogitsLoss()
-        elif loss_function == 'dice+bce':
-            dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
-            bce_loss = nn.BCEWithLogitsLoss()  # Using the standard torch loss
-            self.criterion = CombinedLoss(dice_loss, bce_loss, weight1=0.5, weight2=0.5)
-        else:
-            raise ValueError(f"Unknown loss function: {loss_function}. "
-                             f"Available options: 'dice', 'bce', 'dice+bce'")
+        self.criterion = loss_function
+        loss_name = getattr(self.criterion, 'name', self.criterion.__class__.__name__)
+        self.hparams.loss_function_name = loss_name
+        print(f"Using loss function: {loss_name}")
 
     def forward(self, x):
         return self.model(x)
 
-    def training_step(self, batch, batch_idx):
-        # TorchIO batch structure
-        image = batch['image'][tio.DATA]  # Shape: (B, 2, H, W, 1)
-        label = batch['label'][tio.DATA]  # Shape: (B, 1, H, W, 1)
+    def _common_step(self, batch, batch_idx, stage: str):
+        """Shared logic for training and validation steps."""
+        image = batch['image']
+        label = batch['label']
 
-        # Remove the singleton dimension
-        image = image.squeeze(-1)  # (B, 2, H, W)
-        label = label.squeeze(-1)  # (B, 1, H, W)
+        # Get the batch size for logging
+        batch_size = image.size(0)
 
-        # Forward pass
-        pred = self(image)  # (B, 1, H, W)
-        loss = self.criterion(pred, label.to(torch.float32))
+        if image.dim() == 5:
+            image = image.squeeze(-1)
+        if label.dim() == 5:
+            label = label.squeeze(-1)
 
-        self.log('train_loss', loss, prog_bar=True, on_step=True, on_epoch=True)
+        pred_logits = self(image)
+        loss = self.criterion(pred_logits, label.to(torch.float32))
+
+        # --- THIS IS THE FIX ---
+        # Explicitly provide the batch_size to self.log to remove the warning
+        self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage=='train'), on_epoch=True, batch_size=batch_size)
+
+        if stage == 'val':
+            pred_probs = torch.sigmoid(pred_logits)
+            pred_binary = (pred_probs > 0.5).float()
+            dice = self.dice_coefficient(pred_binary, label)
+            self.log('val_dice', dice, prog_bar=True, on_epoch=True, batch_size=batch_size)
+
         return loss
 
+    # ... (the rest of the file is unchanged) ...
+    def training_step(self, batch, batch_idx):
+        return self._common_step(batch, batch_idx, "train")
+
     def validation_step(self, batch, batch_idx):
-        image = batch['image'][tio.DATA].squeeze(-1)
-        label = batch['label'][tio.DATA].squeeze(-1)
-
-        pred = self(image)
-        loss = self.criterion(pred, label.to(torch.float32))
-
-        # Calculate metrics
-        # Apply sigmoid to logits to get probabilities for metric calculation
-        pred_probs = torch.sigmoid(pred)
-        pred_binary = (pred_probs > 0.5).float()
-        dice = self.dice_coefficient(pred_binary, label.to(torch.float32))
-
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_dice', dice, prog_bar=True)
+        return self._common_step(batch, batch_idx, "val")
 
     def dice_coefficient(self, pred, target, smooth=1e-5):
-        """
-        Metric calculation. This is separate from the loss function.
-        It expects a binarized prediction.
-        """
-        # Ensure intersection and union are calculated on the same device
-        intersection = (pred * target).sum()
-        union = pred.sum() + target.sum()
-        return (2 * intersection + smooth) / (union + smooth)
+        intersection = (pred * target).sum(dim=(1, 2, 3))
+        union = pred.sum(dim=(1, 2, 3)) + target.sum(dim=(1, 2, 3))
+        dice = torch.mean((2. * intersection + smooth) / (union + smooth))
+        return dice
 
     def configure_optimizers(self):
-        """Configure optimizer and learning rate scheduler."""
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
         if not config.USE_LR_SCHEDULER:
             return optimizer
-
-        datamodule = self.trainer.datamodule
-        num_train_images = len(datamodule.train_pt_files)
-        total_patches_per_epoch = num_train_images * config.SAMPLES_PER_VOLUME
+        total_patches_per_epoch = self.hparams.num_train_samples * config.SAMPLES_PER_VOLUME
         steps_per_epoch = np.ceil(total_patches_per_epoch / config.BATCH_SIZE)
-        total_steps = int(steps_per_epoch * config.MAX_EPOCHS)
-
-        print(f"Manually calculated total steps for OneCycleLR: {total_steps}")
+        total_steps = int(steps_per_epoch * self.trainer.max_epochs)
+        print(f"Scheduler configured with total steps: {total_steps}")
         if total_steps <= 0:
-            raise ValueError(
-                f"Calculated total_steps is not positive: {total_steps}. "
-                "Check your training data and config."
-            )
-
+            raise ValueError(f"Calculated total_steps is not positive: {total_steps}.")
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
-            max_lr=self.learning_rate,
+            max_lr=self.hparams.learning_rate,
             total_steps=total_steps,
-            pct_start=config.SCHEDULER_WARMUP_EPOCHS / config.MAX_EPOCHS,
+            pct_start=config.SCHEDULER_WARMUP_EPOCHS / self.trainer.max_epochs,
             anneal_strategy='cos',
-            final_div_factor=self.learning_rate / config.SCHEDULER_MIN_LR,
         )
-
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "step",
-            },
+            "lr_scheduler": { "scheduler": scheduler, "interval": "step" },
         }

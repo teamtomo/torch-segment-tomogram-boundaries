@@ -1,36 +1,98 @@
-from typing import Tuple
-from torch_tomo_slab import config
-import torchio as tio
+from typing import Dict, Tuple, List
+import torch
+import torchvision.transforms as T
+import torchvision.transforms.functional as F
+from torchvision.transforms import InterpolationMode
 
-def get_transforms(patch_size: Tuple[int, int],
-                   is_training: bool = True) -> tio.Transform:
+
+class JointTransform:
     """
-    Create TorchIO transform pipeline for 2D medical image segmentation.
+    Applies the same random geometric transform to an image and its label map.
+    Operates on a dictionary of tensors.
     """
+
+    def __init__(self):
+        # These are just for storing parameters, the logic is custom.
+        self.affine_params = T.RandomAffine.get_params(
+            degrees=(-10, 10),
+            translate=(0.1, 0.1),
+            scale_ranges=(0.9, 1.1),
+            shears=None,
+            img_size=[1, 1]  # Placeholder, will be replaced
+        )
+
+    def __call__(self, sample: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        image, label = sample['image'], sample['label']
+
+        # 1. Random Flips (50% chance for each)
+        if torch.rand(1) < 0.5:
+            image = F.hflip(image)
+            label = F.hflip(label)
+        if torch.rand(1) < 0.5:
+            image = F.vflip(image)
+            label = F.vflip(label)
+
+        # 2. Random Affine (applied together)
+        affine_params = T.RandomAffine.get_params(
+            degrees=(-10, 10),
+            translate=(0.1, 0.1),
+            scale_ranges=(0.9, 1.1),
+            shears=None,
+            img_size=list(image.shape[-2:])
+        )
+        image = F.affine(image, *affine_params, interpolation=InterpolationMode.BILINEAR)
+        # Use NEAREST for the label to preserve integer class values
+        label = F.affine(label, *affine_params, interpolation=InterpolationMode.NEAREST)
+
+        # 3. Intensity transforms (applied only to image)
+        # Using ColorJitter on a 2-channel scientific image is possible but can have
+        # unexpected effects. Let's use more direct methods.
+        # Add random noise
+        if torch.rand(1) < 0.3:
+            noise = torch.randn_like(image) * 0.05
+            image = image + noise
+
+        # Random blur
+        if torch.rand(1) < 0.3:
+            image = F.gaussian_blur(image, kernel_size=3, sigma=(0.1, 1.0))
+
+        sample['image'] = image
+        sample['label'] = label
+        return sample
+
+
+class NormalizeSample:
+    """
+    Applies Z-score normalization to the 'image' tensor in a sample dictionary.
+    (x - mean) / (std + eps)
+    """
+
+    def __init__(self, eps: float = 1e-8):
+        self.eps = eps
+
+    def __call__(self, sample: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        image = sample['image']
+
+        # Calculate mean and std over the spatial dimensions (H, W) for each channel
+        mean = torch.mean(image, dim=[-2, -1], keepdim=True)
+        std = torch.std(image, dim=[-2, -1], keepdim=True)
+
+        sample['image'] = (image - mean) / (std + self.eps)
+        return sample
+
+
+def get_transforms(is_training: bool = True) -> T.Compose:
+    """
+    Create a torchvision transform pipeline for 2D medical image segmentation.
+    The unused `patch_size` argument has been removed.
+    """
+    transform_list: List[callable] = []
 
     if is_training:
-        transforms = tio.Compose([
-            # Spatial transforms (applied to both image and label)
-            tio.RandomFlip(axes=('Left', 'Posterior'), p=0.5),  # Horizontal/Vertical flip
-            tio.RandomAffine(
-                scales=(0.9, 1.1),
-                degrees=(-10, 10),
-                translation=(-0.1, 0.1),
-                p=0.5
-            ),
+        # For training, apply geometric and intensity augmentations first.
+        transform_list.append(JointTransform())
 
-            # Intensity transforms (only applied to image, not label)
-            tio.RandomGamma(log_gamma=(-0.3, 0.3), p=0.5),
-            tio.RandomNoise(std=(0, 0.05), p=0.3),
-            tio.RandomBlur(std=(0, 1), p=0.3),
-            # Patch sampling for training
-            tio.CropOrPad((*patch_size, 1)),  # Ensure consistent size
-        ])
-    else:
-        # Validation/test: minimal transforms
-        transforms = tio.Compose([
-            tio.ZNormalization(masking_method=None),
-            tio.CropOrPad((*patch_size, 1)),
-        ])
+    # For both training and validation, apply normalization as the final step.
+    transform_list.append(NormalizeSample())
 
-    return transforms
+    return T.Compose(transform_list)

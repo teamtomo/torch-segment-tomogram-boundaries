@@ -1,14 +1,14 @@
 from pathlib import Path
 
-BASE_DATA_PATH = Path("/Users/ps/data/wip/torch-tomo-slab")  # Adjust this to your project's root data folder
+BASE_DATA_PATH = Path("/home/pranav/software/torch-tomo-slab")  # Adjust this to your project's root data folder
 
 # Input data for script 01 and 02
-RAW_DATA_PATH = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
-IMOD_MODEL_DIR = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
-REFERENCE_TOMOGRAM_DIR = Path("/Users/ps/data/wip/torch-tomo-mask/data_in")
+RAW_DATA_PATH = Path("/home/pranav/software/torch-tomo-slab/data_in")
+IMOD_MODEL_DIR = Path("//home/pranav/software/torch-tomo-slab/data_in")
+REFERENCE_TOMOGRAM_DIR = Path("/home/pranav/software/torch-tomo-slab/data_in")
 
 # Output data from scripts
-MASK_OUTPUT_DIR = RAW_DATA_PATH / "mask_data"
+MASK_OUTPUT_DIR = RAW_DATA_PATH / "prepared_data"
 PREPARED_DATA_DIR = BASE_DATA_PATH / "prepared_data"  # Output of script 02, input for train.py
 
 # Number of 2D slices to extract from each 3D volume
@@ -25,14 +25,15 @@ MODEL_ENCODER = "resnet34"
 # Training Hyperparameters
 LEARNING_RATE = 1e-3
 LOSS_FUNCTION = "dice+bce"  # Options: 'dice', 'bce', 'dice+bce'
+LOSS_WEIGHTS = (0.5,0.5)
 MAX_EPOCHS = 100
-
+PRECISION='bf16-mixed'
 # Dataloader & Augmentation
 PATCH_SIZE = 64
 OVERLAP = 32
 VALIDATION_FRACTION = 0.2
 BATCH_SIZE = 8
-NUM_WORKERS = 4  # Adjust based on your machine's CPUs
+NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 
 # Patch Sampling Strategy
 SAMPLES_PER_VOLUME = 100  # Number of patches to extract per 2D image

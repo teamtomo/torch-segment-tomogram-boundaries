@@ -1,16 +1,17 @@
 import pytorch_lightning as pl
 from typing import List, Optional, Tuple
 from pathlib import Path
-
+import torch
 from torch.utils.data import DataLoader
 from torch_tomo_slab.data.transforms import get_transforms
 from torch_tomo_slab.data.dataset import PTFileDataset
 from torch_tomo_slab.data.sampling import WeightedPatcheSampler, CustomPatchDataset
 
-
 class SegmentationDataModule(pl.LightningDataModule):
-    """PyTorch Lightning DataModule with intelligent patch sampling."""
-
+    """
+    PyTorch Lightning DataModule using a torchvision-based pipeline
+    with an encapsulated torchio patch sampler.
+    """
     def __init__(
             self,
             train_pt_files: List[Path],
@@ -24,46 +25,35 @@ class SegmentationDataModule(pl.LightningDataModule):
             val_patch_sampling: bool,
     ):
         super().__init__()
-        self.train_pt_files = train_pt_files
-        self.val_pt_files = val_pt_files
-        self.patch_size = patch_size
-        self.overlap = overlap
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.samples_per_volume = samples_per_volume
-        self.alpha_for_dropping = alpha_for_dropping
-        self.val_patch_sampling = val_patch_sampling
+        self.save_hyperparameters()
 
     def setup(self, stage: Optional[str] = None):
-        # Training dataset with augmentations
+        # ... (setup logic is correct and remains unchanged)
         if stage == "fit" or stage is None:
-            train_transform = get_transforms(self.patch_size, is_training=True)
-            train_subjects_dataset = PTFileDataset(self.train_pt_files, transform=train_transform)
+            train_transform = get_transforms(is_training=True)
+            train_subjects_dataset = PTFileDataset(self.hparams.train_pt_files, transform=train_transform)
 
-            # Create intelligent patch sampler
             patch_sampler = WeightedPatcheSampler(
-                patch_size=self.patch_size,
-                samples_per_volume=self.samples_per_volume,
-                alpha_for_dropping=self.alpha_for_dropping,
-                overlap = self.overlap
+                patch_size=self.hparams.patch_size,
+                samples_per_volume=self.hparams.samples_per_volume,
+                alpha_for_dropping=self.hparams.alpha_for_dropping,
+                overlap=self.hparams.overlap
             )
 
-            # Create custom patch dataset
             self.train_dataset = CustomPatchDataset(
                 subjects_dataset=train_subjects_dataset,
                 patch_sampler=patch_sampler,
                 shuffle_subjects=True,
             )
 
-            # Validation dataset
-            val_transform = get_transforms(self.patch_size, is_training=False)
-            if self.val_patch_sampling:
-                val_subjects_dataset = PTFileDataset(self.val_pt_files, transform=val_transform)
+            val_transform = get_transforms(is_training=False)
+            if self.hparams.val_patch_sampling:
+                val_subjects_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
                 val_patch_sampler = WeightedPatcheSampler(
-                    patch_size=self.patch_size,
-                    samples_per_volume=self.samples_per_volume // 2,  # Fewer patches for validation
+                    patch_size=self.hparams.patch_size,
+                    samples_per_volume=self.hparams.samples_per_volume // 2,
                     alpha_for_dropping=0.0,
-                    overlap_factor = self.overlap_factor# No dropping for validation
+                    overlap=self.hparams.overlap
                 )
                 self.val_dataset = CustomPatchDataset(
                     subjects_dataset=val_subjects_dataset,
@@ -71,25 +61,23 @@ class SegmentationDataModule(pl.LightningDataModule):
                     shuffle_subjects=False,
                 )
             else:
-                # Use full images for validation
-                self.val_dataset = PTFileDataset(self.val_pt_files, transform=val_transform)
-
+                self.val_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
 
     def train_dataloader(self):
         return DataLoader(
             self.train_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
             pin_memory=True,
-            persistent_workers=True
+            persistent_workers=self.hparams.num_workers > 0,
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
+            batch_size=self.hparams.batch_size,
             shuffle=False,
-            num_workers=self.num_workers,
+            num_workers=self.hparams.num_workers,
             pin_memory=True,
-            persistent_workers=True
+            persistent_workers=self.hparams.num_workers > 0,
         )
