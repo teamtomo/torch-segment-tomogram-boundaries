@@ -1,31 +1,46 @@
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 import torchio as tio
 
 
-class WeightedPatcheSampler:
+class TorchioPatchSampler:
     """
-    Custom patch sampler that uses torchio's backend for grid sampling
-    but operates on standard torch tensors.
+    A robust patch sampler that leverages torchio's sampling strategies.
+    This version adds a crucial padding step to ensure that patches can
+    always be extracted, even from images smaller than the patch size.
     """
-
     def __init__(
-            self,
-            patch_size: Tuple[int, int],
-            samples_per_volume: int,
-            alpha_for_dropping: float = 1.0,
-            overlap: int = 0,
+        self,
+        patch_size: Tuple[int, int],
+        samples_per_volume: int,
+        label_probabilities: Optional[Dict[int, float]] = None,
     ):
-        self.patch_size = patch_size + (1,)
+        self.patch_size = patch_size + (1,)  # Add dummy Z dimension
         self.samples_per_volume = samples_per_volume
-        self.alpha_for_dropping = alpha_for_dropping
-        self.overlap = np.array([overlap, overlap, 0], dtype=int)
+
+        if label_probabilities:
+            self.sampler = tio.LabelSampler(
+                patch_size=self.patch_size,
+                label_name='label',
+                label_probabilities=label_probabilities,
+            )
+        else:
+            self.sampler = tio.UniformSampler(patch_size=self.patch_size)
+
+        # --- THIS IS THE FIX ---
+        # The 'padding_value' argument is not valid for the CropOrPad constructor.
+        # The default behavior for padding_mode='constant' is to pad with zeros,
+        # which is exactly what we need.
+        self.padder = tio.CropOrPad(
+            target_shape=self.patch_size,
+            padding_mode='constant',
+        )
 
     def __call__(self, sample: Dict[str, torch.Tensor]) -> List[Dict[str, torch.Tensor]]:
         """
-        Generates patches from a single sample (image-label dict) with intelligent dropping.
+        Generates a list of random patches from a single sample (image-label dict).
         """
         image_3d = sample['image']
         label_3d = sample['label']
@@ -41,77 +56,75 @@ class WeightedPatcheSampler:
             label=tio.LabelMap(tensor=label_4d),
         )
 
-        label_tensor_for_stats = subject.label.data.squeeze()
-        f0 = (label_tensor_for_stats == 0).sum().item()
-        f1 = label_tensor_for_stats.numel() - f0
-
-        drop_probability = 0.0
-        if f0 > 0 and f1 > 0:
-            # --- THIS IS THE FIX ---
-            # The calculation results in a standard Python float.
-            # We must use standard Python functions to clamp it, not torch.clip.
-            unclamped_prob = 1 - self.alpha_for_dropping * (f1 / f0)
-            drop_probability = min(1.0, max(0.0, unclamped_prob))
-
-        grid_sampler = tio.inference.GridSampler(
-            subject=subject,
-            patch_size=self.patch_size,
-            patch_overlap=self.overlap,
-        )
+        padded_subject = self.padder(subject)
 
         patches = []
-        for patch_subject in grid_sampler:
-            patch_label = patch_subject.label.data.squeeze()
-            is_empty_patch = patch_label.sum().item() == 0
-            if is_empty_patch and torch.rand(1).item() < drop_probability:
-                continue
+        patch_generator = self.sampler(padded_subject)
+
+        for i, patch_subject in enumerate(patch_generator):
+            if i >= self.samples_per_volume:
+                break
 
             patches.append({
                 'image': patch_subject.image.data.squeeze(-1),
                 'label': patch_subject.label.data.squeeze(-1)
             })
-            if len(patches) >= self.samples_per_volume:
-                break
-
-        if len(patches) < self.samples_per_volume:
-            uniform_sampler = tio.UniformSampler(self.patch_size)
-            for _ in range(self.samples_per_volume - len(patches)):
-                random_patch = next(uniform_sampler(subject))
-                patch_label = random_patch.label.data.squeeze()
-                is_empty_patch = patch_label.sum().item() == 0
-                if is_empty_patch and torch.rand(1).item() < drop_probability:
-                    continue
-                patches.append({
-                    'image': random_patch.image.data.squeeze(-1),
-                    'label': random_patch.label.data.squeeze(-1)
-                })
-
         return patches
 
-
 class CustomPatchDataset(torch.utils.data.IterableDataset):
-    # ... (This class is correct and remains unchanged) ...
+    """
+    An iterable dataset that generates patches from a set of subjects (2D images).
+    This implementation correctly partitions the data across multiple workers, making
+    it safe to use with a __len__ method and a multi-process DataLoader.
+    """
     def __init__(
             self,
             subjects_dataset: Dataset,
-            patch_sampler: WeightedPatcheSampler,
+            patch_sampler: TorchioPatchSampler,
             shuffle_subjects: bool = True,
     ):
+        super().__init__()
         self.subjects_dataset = subjects_dataset
         self.patch_sampler = patch_sampler
         self.shuffle_subjects = shuffle_subjects
 
+    def __len__(self) -> int:
+        """
+        Returns the total number of patches that will be generated across all subjects.
+        This is used by PyTorch Lightning to configure progress bars and schedulers.
+        """
+        return len(self.subjects_dataset) * self.patch_sampler.samples_per_volume
+
     def __iter__(self):
+        """
+        NOTE on the PyTorch Lightning Warning:
+        PyTorch Lightning may still issue a warning: "Your IterableDataset has `__len__` defined...".
+        This is a static check. The logic below correctly handles data partitioning
+        across workers, so this warning can be safely ignored. Each worker will
+        process a unique subset of the subjects, and the total number of yielded
+        patches will match the value returned by __len__.
+        """
         subject_indices = list(range(len(self.subjects_dataset)))
+
         if self.shuffle_subjects:
-            worker_info = torch.utils.data.get_worker_info()
             seed = torch.initial_seed()
-            if worker_info is not None:
-                seed += worker_info.id
+            worker_info_for_seed = torch.utils.data.get_worker_info()
+            if worker_info_for_seed is not None:
+                seed += worker_info_for_seed.id
             generator = torch.Generator()
             generator.manual_seed(seed)
             perm = torch.randperm(len(subject_indices), generator=generator).tolist()
             subject_indices = [subject_indices[i] for i in perm]
+
+        # Correctly partition the data for multi-process loading
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            # This is a worker process. Give it a unique slice of the data.
+            num_workers = worker_info.num_workers
+            worker_id = worker_info.id
+            subject_indices = subject_indices[worker_id::num_workers]
+
+        # Each worker iterates over its unique subset of subjects
         for subject_idx in subject_indices:
             subject_sample = self.subjects_dataset[subject_idx]
             patches = self.patch_sampler(subject_sample)

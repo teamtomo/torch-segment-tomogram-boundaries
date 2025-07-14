@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch_tomo_slab.data.transforms import get_transforms
 from torch_tomo_slab.data.dataset import PTFileDataset
-from torch_tomo_slab.data.sampling import WeightedPatcheSampler, CustomPatchDataset
+from torch_tomo_slab.data.sampling import TorchioPatchSampler, CustomPatchDataset # <-- IMPORT a new class
 
 class SegmentationDataModule(pl.LightningDataModule):
     """
@@ -17,43 +17,50 @@ class SegmentationDataModule(pl.LightningDataModule):
             train_pt_files: List[Path],
             val_pt_files: List[Path],
             patch_size: Tuple[int, int],
-            overlap: int,
             batch_size: int,
             num_workers: int,
             samples_per_volume: int,
-            alpha_for_dropping: float,
+            alpha_for_dropping: float, # This is now interpreted differently
             val_patch_sampling: bool,
+            # Removed `overlap` as it's not used by random samplers
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['alpha_for_dropping'])
+        # --- NEW: Define label probabilities for the sampler ---
+        # alpha_for_dropping of 0.75 means ~75% foreground, 25% background.
+        foreground_weight = alpha_for_dropping
+        background_weight = 1.0 - foreground_weight
+        self.train_label_probabilities = {
+            0: background_weight, # Background class
+            1: foreground_weight  # Foreground class
+        }
+
 
     def setup(self, stage: Optional[str] = None):
-        # ... (setup logic is correct and remains unchanged)
         if stage == "fit" or stage is None:
             train_transform = get_transforms(is_training=True)
             train_subjects_dataset = PTFileDataset(self.hparams.train_pt_files, transform=train_transform)
 
-            patch_sampler = WeightedPatcheSampler(
+            # --- Use the new, robust patch sampler for training ---
+            train_patch_sampler = TorchioPatchSampler(
                 patch_size=self.hparams.patch_size,
                 samples_per_volume=self.hparams.samples_per_volume,
-                alpha_for_dropping=self.hparams.alpha_for_dropping,
-                overlap=self.hparams.overlap
+                label_probabilities=self.train_label_probabilities,
             )
 
             self.train_dataset = CustomPatchDataset(
                 subjects_dataset=train_subjects_dataset,
-                patch_sampler=patch_sampler,
+                patch_sampler=train_patch_sampler,
                 shuffle_subjects=True,
             )
 
             val_transform = get_transforms(is_training=False)
             if self.hparams.val_patch_sampling:
                 val_subjects_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
-                val_patch_sampler = WeightedPatcheSampler(
+                # For validation, use uniform sampling (no label probabilities)
+                val_patch_sampler = TorchioPatchSampler(
                     patch_size=self.hparams.patch_size,
                     samples_per_volume=self.hparams.samples_per_volume // 2,
-                    alpha_for_dropping=0.0,
-                    overlap=self.hparams.overlap
                 )
                 self.val_dataset = CustomPatchDataset(
                     subjects_dataset=val_subjects_dataset,
@@ -64,6 +71,7 @@ class SegmentationDataModule(pl.LightningDataModule):
                 self.val_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
 
     def train_dataloader(self):
+        # ... (implementation is correct and remains unchanged) ...
         return DataLoader(
             self.train_dataset,
             batch_size=self.hparams.batch_size,
@@ -72,7 +80,9 @@ class SegmentationDataModule(pl.LightningDataModule):
             persistent_workers=self.hparams.num_workers > 0,
         )
 
+
     def val_dataloader(self):
+        # ... (implementation is correct and remains unchanged) ...
         return DataLoader(
             self.val_dataset,
             batch_size=self.hparams.batch_size,

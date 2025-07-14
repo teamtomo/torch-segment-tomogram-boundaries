@@ -1,18 +1,19 @@
 from pathlib import Path
 
-BASE_DATA_PATH = Path("/home/pranav/software/torch-tomo-slab")  # Adjust this to your project's root data folder
+BASE_DATA_PATH = Path("/home/pranav/data/training/torch-tomo-slab")  # Adjust this to your project's root data folder
 
 # Input data for script 01 and 02
-RAW_DATA_PATH = Path("/home/pranav/software/torch-tomo-slab/data_in")
-IMOD_MODEL_DIR = Path("//home/pranav/software/torch-tomo-slab/data_in")
-REFERENCE_TOMOGRAM_DIR = Path("/home/pranav/software/torch-tomo-slab/data_in")
+#RAW_DATA_PATH = BASE_DATA_PATH/"data_in"/""
+IMOD_MODEL_DIR = BASE_DATA_PATH/"data_in"/"mods"
+REFERENCE_TOMOGRAM_DIR = BASE_DATA_PATH/"data_in"/"volumes"
 
 # Output data from scripts
-MASK_OUTPUT_DIR = RAW_DATA_PATH / "prepared_data"
-PREPARED_DATA_DIR = BASE_DATA_PATH / "prepared_data"  # Output of script 02, input for train.py
+MASK_OUTPUT_DIR =  BASE_DATA_PATH / "data_in" / "boundary_mask_voumes"
+PREPARED_DATA_DIR = BASE_DATA_PATH / "prepared_data" / "labels"  # Output of script 02, input for train.py
+MULTIPLY_TOMO_MASK = True
 
 # Number of 2D slices to extract from each 3D volume
-NUM_SECTIONS_PER_VOLUME = 50
+NUM_SECTIONS_PER_VOLUME = 120
 
 # Kernel size for the local variance calculation
 LOCAL_VARIANCE_KERNEL_SIZE = 5
@@ -29,20 +30,20 @@ LOSS_WEIGHTS = (0.5,0.5)
 MAX_EPOCHS = 100
 PRECISION='bf16-mixed'
 # Dataloader & Augmentation
-PATCH_SIZE = 64
-OVERLAP = 32
+PATCH_SIZE = 128
+OVERLAP = 64
 VALIDATION_FRACTION = 0.2
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 
 # Patch Sampling Strategy
-SAMPLES_PER_VOLUME = 100  # Number of patches to extract per 2D image
+SAMPLES_PER_VOLUME = 200  # Number of patches to extract per 2D image
 ALPHA_FOR_DROPPING = 0.75  # Controls how aggressively to drop empty patches. 0=no drop, 1=aggressive.
-VALIDATION_PATCH_SAMPLING = False  # Set to False for validation on full images, True for patches
+VALIDATION_PATCH_SAMPLING = True  # Set to False for validation on full images, True for patches
 
 # --- TRAINER CONFIGURATION ---
 ACCELERATOR = "auto"  # Let PyTorch Lightning detect GPU/MPS/CPU
-DEVICES = 1
+DEVICES = 2
 LOG_EVERY_N_STEPS = 10
 CHECK_VAL_EVERY_N_EPOCH = 5
 

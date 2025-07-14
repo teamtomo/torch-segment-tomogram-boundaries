@@ -66,13 +66,13 @@ def find_data_pairs(vol_dir: Path, label_dir: Path) -> List[Tuple[Path, Path]]:
     """Finds matching volume and label files based on their base names."""
     pairs = []
     vol_files = sorted(list(vol_dir.glob("*.mrc")))
-
+    
     label_files_map = {
-        p.stem.replace('_label', ''): p for p in label_dir.glob("*_label.mrc")
+        p.stem: p for p in label_dir.glob("*.mrc")
     }
 
     for vol_path in vol_files:
-        base_name = vol_path.stem.replace('_vol', '')
+        base_name = vol_path.stem
         if base_name in label_files_map:
             pairs.append((vol_path, label_files_map[base_name]))
         else:
