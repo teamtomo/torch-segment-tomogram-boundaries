@@ -8,8 +8,7 @@ import torchio as tio
 class TorchioPatchSampler:
     """
     A robust patch sampler that leverages torchio's sampling strategies.
-    This version adds a crucial padding step to ensure that patches can
-    always be extracted, even from images smaller than the patch size.
+    This version returns a list of all patches from a given volume.
     """
     def __init__(
         self,
@@ -29,10 +28,6 @@ class TorchioPatchSampler:
         else:
             self.sampler = tio.UniformSampler(patch_size=self.patch_size)
 
-        # --- THIS IS THE FIX ---
-        # The 'padding_value' argument is not valid for the CropOrPad constructor.
-        # The default behavior for padding_mode='constant' is to pad with zeros,
-        # which is exactly what we need.
         self.padder = tio.CropOrPad(
             target_shape=self.patch_size,
             padding_mode='constant',
@@ -71,11 +66,11 @@ class TorchioPatchSampler:
             })
         return patches
 
-class CustomPatchDataset(torch.utils.data.IterableDataset):
+class IterablePatchDataset(torch.utils.data.IterableDataset):
     """
-    An iterable dataset that generates patches from a set of subjects (2D images).
-    This implementation correctly partitions the data across multiple workers, making
-    it safe to use with a __len__ method and a multi-process DataLoader.
+    An iterable dataset that ensures each batch contains patches from different
+    source images, maximizing batch diversity. It achieves this by generating patches
+    in a round-robin fashion from all subjects.
     """
     def __init__(
             self,
@@ -86,47 +81,49 @@ class CustomPatchDataset(torch.utils.data.IterableDataset):
         super().__init__()
         self.subjects_dataset = subjects_dataset
         self.patch_sampler = patch_sampler
+        self.num_patches_per_subject = self.patch_sampler.samples_per_volume
         self.shuffle_subjects = shuffle_subjects
 
     def __len__(self) -> int:
         """
         Returns the total number of patches that will be generated across all subjects.
-        This is used by PyTorch Lightning to configure progress bars and schedulers.
         """
-        return len(self.subjects_dataset) * self.patch_sampler.samples_per_volume
+        return len(self.subjects_dataset) * self.num_patches_per_subject
 
     def __iter__(self):
-        """
-        NOTE on the PyTorch Lightning Warning:
-        PyTorch Lightning may still issue a warning: "Your IterableDataset has `__len__` defined...".
-        This is a static check. The logic below correctly handles data partitioning
-        across workers, so this warning can be safely ignored. Each worker will
-        process a unique subset of the subjects, and the total number of yielded
-        patches will match the value returned by __len__.
-        """
-        subject_indices = list(range(len(self.subjects_dataset)))
-
-        if self.shuffle_subjects:
-            seed = torch.initial_seed()
-            worker_info_for_seed = torch.utils.data.get_worker_info()
-            if worker_info_for_seed is not None:
-                seed += worker_info_for_seed.id
-            generator = torch.Generator()
-            generator.manual_seed(seed)
-            perm = torch.randperm(len(subject_indices), generator=generator).tolist()
-            subject_indices = [subject_indices[i] for i in perm]
-
-        # Correctly partition the data for multi-process loading
         worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None:
-            # This is a worker process. Give it a unique slice of the data.
-            num_workers = worker_info.num_workers
+        if worker_info is None:
+            worker_id = 0
+            num_workers = 1
+        else:
             worker_id = worker_info.id
-            subject_indices = subject_indices[worker_id::num_workers]
+            num_workers = worker_info.num_workers
 
-        # Each worker iterates over its unique subset of subjects
-        for subject_idx in subject_indices:
+        # Each worker gets a unique slice of the subjects
+        all_subject_indices = list(range(len(self.subjects_dataset)))
+        subject_indices_for_this_worker = all_subject_indices[worker_id::num_workers]
+
+        # Pre-generate all patches for all subjects this worker is responsible for.
+        # This can be memory-intensive but ensures correct behavior.
+        patches_from_all_subjects = []
+        for subject_idx in subject_indices_for_this_worker:
             subject_sample = self.subjects_dataset[subject_idx]
-            patches = self.patch_sampler(subject_sample)
-            for patch in patches:
-                yield patch
+            patches_from_all_subjects.append(self.patch_sampler(subject_sample))
+
+        # This generator seeds itself based on the worker's seed provided by the DataLoader
+        generator = torch.Generator()
+        generator.manual_seed(torch.initial_seed())
+
+        # Iterate in a "round-robin" or "pass-through" fashion
+        for i in range(self.num_patches_per_subject):
+            # Collect the i-th patch from every subject
+            pass_patches = [subject_patches[i] for subject_patches in patches_from_all_subjects]
+
+            # Shuffle the order of patches within this pass
+            if self.shuffle_subjects:
+                perm = torch.randperm(len(pass_patches), generator=generator)
+                for p_idx in perm:
+                    yield pass_patches[p_idx]
+            else:
+                for patch in pass_patches:
+                    yield patch

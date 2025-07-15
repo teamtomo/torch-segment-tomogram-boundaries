@@ -8,8 +8,8 @@ from torch_tomo_slab import config
 class SegmentationModel(pl.LightningModule):
     """
     PyTorch Lightning module for 2-channel segmentation.
-    This version robustly configures the LR scheduler by using the `setup` hook
-    to determine the number of training steps per epoch.
+    This version includes image logging for both training and validation steps,
+    and fixes the visualization of normalized input images.
     """
 
     def __init__(
@@ -22,27 +22,21 @@ class SegmentationModel(pl.LightningModule):
         self.save_hyperparameters(ignore=['model', 'loss_function'])
         self.model = model
         self.criterion = loss_function
-        # --- NEW: A placeholder for steps_per_epoch ---
         self.steps_per_epoch = None
 
     def setup(self, stage: str):
         """
-        --- THIS IS THE FIX ---
         This hook is called after the datamodule has been prepared.
         We use it to calculate the number of steps per epoch and store it.
         """
         if stage == 'fit':
-            # Calculate the number of training batches
             train_loader = self.trainer.datamodule.train_dataloader()
             self.steps_per_epoch = len(train_loader)
             print(f"Detected {self.steps_per_epoch} steps per epoch for the scheduler.")
 
-
     def forward(self, x):
         return self.model(x)
 
-    # _common_step, training_step, validation_step, _log_validation_images, dice_coefficient...
-    # ... all remain exactly the same as the previous version ...
     def _common_step(self, batch, batch_idx, stage: str):
         image = batch['image']
         label = batch['label']
@@ -55,30 +49,55 @@ class SegmentationModel(pl.LightningModule):
         return loss, pred_logits
 
     def training_step(self, batch, batch_idx):
-        loss, _ = self._common_step(batch, batch_idx, "train")
+        loss, pred_logits = self._common_step(batch, batch_idx, "train")
+
+        # Log images from the first training batch of every epoch
+        if batch_idx == 0 and self.trainer.is_global_zero:
+            pred_probs = torch.sigmoid(pred_logits)
+            self._log_images(batch, pred_probs, "Train")
+
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss, pred_logits = self._common_step(batch, batch_idx, "val")
+
         pred_probs = torch.sigmoid(pred_logits)
         pred_binary = (pred_probs > 0.5).float()
         dice = self.dice_coefficient(pred_binary, batch['label'])
         self.log('val_dice', dice, prog_bar=True, on_epoch=True, batch_size=batch['image'].size(0), sync_dist=True)
+
+        # Log images from the first validation batch of every validation run
         if batch_idx == 0 and self.trainer.is_global_zero:
-            self._log_validation_images(batch, pred_probs)
+            self._log_images(batch, pred_probs, "Validation")
+
         return loss
 
-    def _log_validation_images(self, batch: dict, pred_probs: torch.Tensor):
-        if self.logger is None or not hasattr(self.logger.experiment, 'add_image'): return
+    def _log_images(self, batch: dict, pred_probs: torch.Tensor, stage_name: str):
+        """
+        Logs a grid of input images, ground truth labels, and predictions to TensorBoard.
+        """
+        if self.logger is None or not hasattr(self.logger.experiment, 'add_image'):
+            return
+
         image, label = batch['image'], batch['label']
         num_images_to_log = min(8, image.size(0))
         grid_params = {"padding": 2, "pad_value": 1.0, "nrow": 4}
-        input_grid = torchvision.utils.make_grid(image[:num_images_to_log, 0:1, :, :], **grid_params)
-        self.logger.experiment.add_image("Validation/Input (Channel 1)", input_grid, self.current_epoch)
+
+        # --- THIS IS THE FIX for the black input image ---
+        # `normalize=True` rescales the Z-score normalized image to the [0, 1]
+        # range, making it visible in TensorBoard. This is for visualization only.
+        input_grid = torchvision.utils.make_grid(
+            image[:num_images_to_log, 0:1, :, :],
+            **grid_params,
+            normalize=True
+        )
+        self.logger.experiment.add_image(f"{stage_name}/Input (Tomogram)", input_grid, self.current_epoch)
+
         label_grid = torchvision.utils.make_grid(label[:num_images_to_log].to(torch.float32), **grid_params)
-        self.logger.experiment.add_image("Validation/Ground Truth", label_grid, self.current_epoch)
+        self.logger.experiment.add_image(f"{stage_name}/Ground Truth", label_grid, self.current_epoch)
+
         pred_grid = torchvision.utils.make_grid(pred_probs[:num_images_to_log].to(torch.float32), **grid_params)
-        self.logger.experiment.add_image("Validation/Prediction", pred_grid, self.current_epoch)
+        self.logger.experiment.add_image(f"{stage_name}/Prediction", pred_grid, self.current_epoch)
 
     def dice_coefficient(self, pred, target, smooth=1e-5):
         intersection = (pred * target).sum(dim=(1, 2, 3))
@@ -86,17 +105,12 @@ class SegmentationModel(pl.LightningModule):
         dice = torch.mean((2. * intersection + smooth) / (union + smooth))
         return dice
 
-
     def configure_optimizers(self):
-        """
-        Now correctly uses the steps_per_epoch calculated in the `setup` hook.
-        """
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
         
         if not config.USE_LR_SCHEDULER:
             return optimizer
 
-        # --- THIS IS THE CORRECTED PART ---
         if self.steps_per_epoch is None:
             raise RuntimeError("steps_per_epoch not set. This should be set in the `setup` hook.")
 
@@ -105,7 +119,7 @@ class SegmentationModel(pl.LightningModule):
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=self.hparams.learning_rate,
-            total_steps=total_steps,  # Now we pass the explicitly calculated value
+            total_steps=total_steps,
             pct_start=config.SCHEDULER_WARMUP_EPOCHS / self.trainer.max_epochs,
             anneal_strategy='cos',
         )

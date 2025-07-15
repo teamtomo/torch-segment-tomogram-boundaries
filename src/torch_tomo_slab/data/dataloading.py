@@ -5,12 +5,12 @@ import torch
 from torch.utils.data import DataLoader
 from torch_tomo_slab.data.transforms import get_transforms
 from torch_tomo_slab.data.dataset import PTFileDataset
-from torch_tomo_slab.data.sampling import TorchioPatchSampler, CustomPatchDataset # <-- IMPORT a new class
+from torch_tomo_slab.data.sampling import TorchioPatchSampler, IterablePatchDataset
 
 class SegmentationDataModule(pl.LightningDataModule):
     """
     PyTorch Lightning DataModule using a torchvision-based pipeline
-    with an encapsulated torchio patch sampler.
+    with an encapsulated torchio patch sampler and a diverse patch dataset.
     """
     def __init__(
             self,
@@ -20,19 +20,16 @@ class SegmentationDataModule(pl.LightningDataModule):
             batch_size: int,
             num_workers: int,
             samples_per_volume: int,
-            alpha_for_dropping: float, # This is now interpreted differently
+            alpha_for_dropping: float,
             val_patch_sampling: bool,
-            # Removed `overlap` as it's not used by random samplers
     ):
         super().__init__()
         self.save_hyperparameters(ignore=['alpha_for_dropping'])
-        # --- NEW: Define label probabilities for the sampler ---
-        # alpha_for_dropping of 0.75 means ~75% foreground, 25% background.
         foreground_weight = alpha_for_dropping
         background_weight = 1.0 - foreground_weight
         self.train_label_probabilities = {
-            0: background_weight, # Background class
-            1: foreground_weight  # Foreground class
+            0: background_weight,
+            1: foreground_weight
         }
 
 
@@ -41,14 +38,14 @@ class SegmentationDataModule(pl.LightningDataModule):
             train_transform = get_transforms(is_training=True)
             train_subjects_dataset = PTFileDataset(self.hparams.train_pt_files, transform=train_transform)
 
-            # --- Use the new, robust patch sampler for training ---
             train_patch_sampler = TorchioPatchSampler(
                 patch_size=self.hparams.patch_size,
                 samples_per_volume=self.hparams.samples_per_volume,
                 label_probabilities=self.train_label_probabilities,
             )
 
-            self.train_dataset = CustomPatchDataset(
+            # --- USE THE NEW, DIVERSE DATASET ---
+            self.train_dataset = IterablePatchDataset(
                 subjects_dataset=train_subjects_dataset,
                 patch_sampler=train_patch_sampler,
                 shuffle_subjects=True,
@@ -56,22 +53,21 @@ class SegmentationDataModule(pl.LightningDataModule):
 
             val_transform = get_transforms(is_training=False)
             if self.hparams.val_patch_sampling:
+                # Use the same diverse dataset for validation for consistency
                 val_subjects_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
-                # For validation, use uniform sampling (no label probabilities)
                 val_patch_sampler = TorchioPatchSampler(
                     patch_size=self.hparams.patch_size,
-                    samples_per_volume=self.hparams.samples_per_volume // 2,
+                    samples_per_volume=self.hparams.samples_per_volume // 2, # Sample fewer patches for validation
                 )
-                self.val_dataset = CustomPatchDataset(
+                self.val_dataset = IterablePatchDataset(
                     subjects_dataset=val_subjects_dataset,
                     patch_sampler=val_patch_sampler,
-                    shuffle_subjects=False,
+                    shuffle_subjects=False, # No need to shuffle validation data
                 )
             else:
                 self.val_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
 
     def train_dataloader(self):
-        # ... (implementation is correct and remains unchanged) ...
         return DataLoader(
             self.train_dataset,
             batch_size=self.hparams.batch_size,
@@ -82,7 +78,6 @@ class SegmentationDataModule(pl.LightningDataModule):
 
 
     def val_dataloader(self):
-        # ... (implementation is correct and remains unchanged) ...
         return DataLoader(
             self.val_dataset,
             batch_size=self.hparams.batch_size,

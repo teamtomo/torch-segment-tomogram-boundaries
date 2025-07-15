@@ -24,10 +24,10 @@ MODEL_ARCH = "Unet"
 MODEL_ENCODER = "resnet34"
 
 # Training Hyperparameters
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 LOSS_FUNCTION = "dice+bce"  # Options: 'dice', 'bce', 'dice+bce'
 LOSS_WEIGHTS = (0.5,0.5)
-MAX_EPOCHS = 100
+MAX_EPOCHS = 20
 PRECISION='bf16-mixed'
 # Dataloader & Augmentation
 PATCH_SIZE = 128
@@ -36,8 +36,12 @@ VALIDATION_FRACTION = 0.2
 BATCH_SIZE = 16
 NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 
+# Determined externally using compute stats script in scripts dir
+DATASET_MEAN = [9.489988327026367, 2.731177806854248]
+DATASET_STD = [27.752849578857422, 3.4331705570220947]
+
 # Patch Sampling Strategy
-SAMPLES_PER_VOLUME = 200  # Number of patches to extract per 2D image
+SAMPLES_PER_VOLUME = 50  # Number of patches to extract per 2D image
 ALPHA_FOR_DROPPING = 0.75  # Controls how aggressively to drop empty patches. 0=no drop, 1=aggressive.
 VALIDATION_PATCH_SAMPLING = True  # Set to False for validation on full images, True for patches
 
@@ -45,7 +49,7 @@ VALIDATION_PATCH_SAMPLING = True  # Set to False for validation on full images, 
 ACCELERATOR = "auto"  # Let PyTorch Lightning detect GPU/MPS/CPU
 DEVICES = 2
 LOG_EVERY_N_STEPS = 10
-CHECK_VAL_EVERY_N_EPOCH = 5
+CHECK_VAL_EVERY_N_EPOCH = 1
 
 # --- NEW: LEARNING RATE SCHEDULER CONFIGURATION ---
 USE_LR_SCHEDULER = True
@@ -61,7 +65,7 @@ SCHEDULER_MIN_LR = 1e-6
 MONITOR_METRIC = "val_loss"
 
 # Early Stopping configuration
-EARLY_STOPPING_PATIENCE = 15  # Stop after 15 validation epochs with no improvement
+EARLY_STOPPING_PATIENCE = 8  # Stop after 15 validation epochs with no improvement
 EARLY_STOPPING_MIN_DELTA = 0.001 # Minimum change to be considered an improvement
 
 # Model Checkpoint configuration

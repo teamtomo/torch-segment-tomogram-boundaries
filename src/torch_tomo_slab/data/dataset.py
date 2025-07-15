@@ -29,7 +29,6 @@ class PTFileDataset(Dataset):
         image_tensor = data['image']
         label_tensor = data['label']
 
-        # --- THIS IS THE FIX ---
         # Defensively remove all trailing singleton dimensions until the tensor is 3D.
         # This makes the dataset robust to how the .pt files were saved.
         while image_tensor.ndim > 3:
@@ -40,8 +39,13 @@ class PTFileDataset(Dataset):
         # Ensure tensors are at least 3D (for cases where C=1 was squeezed)
         if image_tensor.ndim == 2:  # H, W -> 1, H, W
             image_tensor = image_tensor.unsqueeze(0)
+
         if label_tensor.ndim == 2:
             label_tensor = label_tensor.unsqueeze(0)
+        
+        if image_tensor.shape[0] == 2:
+            # Tame the variance channel (channel at index 1)
+            image_tensor[1, :, :] = torch.log1p(image_tensor[1, :, :])
 
         sample = {
             'image': image_tensor,  # Should be (C, H, W)

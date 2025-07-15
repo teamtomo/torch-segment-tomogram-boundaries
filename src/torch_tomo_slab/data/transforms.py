@@ -4,6 +4,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 from torchvision.transforms import InterpolationMode
 
+from torch_tomo_slab import config
 
 class JointTransform:
     """
@@ -63,33 +64,32 @@ class JointTransform:
 
 class NormalizeSample:
     """
-    Applies Z-score normalization to the 'image' tensor in a sample dictionary.
-    (x - mean) / (std + eps)
+    Applies Z-score normalization to the 'image' tensor using pre-computed
+    dataset-wide mean and std from the config file.
     """
-
-    def __init__(self, eps: float = 1e-8):
-        self.eps = eps
+    def __init__(self):
+        # Read directly from the config file
+        mean = config.DATASET_MEAN
+        std = config.DATASET_STD
+        # Reshape for broadcasting: (C,) -> (C, 1, 1)
+        self.mean = torch.tensor(mean).view(-1, 1, 1)
+        self.std = torch.tensor(std).view(-1, 1, 1)
+        # Add a small epsilon to std to prevent division by zero
+        self.eps = 1e-8
 
     def __call__(self, sample: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         image = sample['image']
-
-        # Calculate mean and std over the spatial dimensions (H, W) for each channel
-        mean = torch.mean(image, dim=[-2, -1], keepdim=True)
-        std = torch.std(image, dim=[-2, -1], keepdim=True)
-
-        sample['image'] = (image - mean) / (std + self.eps)
+        # Use the pre-computed mean and std
+        sample['image'] = (image - self.mean) / (self.std + self.eps)
         return sample
-
 
 def get_transforms(is_training: bool = True) -> T.Compose:
     """
     Create a torchvision transform pipeline for 2D medical image segmentation.
-    The unused `patch_size` argument has been removed.
     """
     transform_list: List[callable] = []
 
     if is_training:
-        # For training, apply geometric and intensity augmentations first.
         transform_list.append(JointTransform())
 
     # For both training and validation, apply normalization as the final step.
