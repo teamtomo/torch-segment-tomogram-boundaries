@@ -65,6 +65,7 @@ class SegmentationDataModule(pl.LightningDataModule):
                     shuffle_subjects=False, # No need to shuffle validation data
                 )
             else:
+                # --- MODIFIED: Pass the val_transform (which may be None) ---
                 self.val_dataset = PTFileDataset(self.hparams.val_pt_files, transform=val_transform)
 
     def train_dataloader(self):
@@ -78,9 +79,11 @@ class SegmentationDataModule(pl.LightningDataModule):
 
 
     def val_dataloader(self):
+        val_batch_size = 1 if not self.hparams.val_patch_sampling else self.hparams.batch_size
+        
         return DataLoader(
             self.val_dataset,
-            batch_size=self.hparams.batch_size,
+            batch_size=val_batch_size,
             shuffle=False,
             num_workers=self.hparams.num_workers,
             pin_memory=True,

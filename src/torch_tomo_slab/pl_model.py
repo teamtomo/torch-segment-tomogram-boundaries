@@ -114,7 +114,7 @@ class SegmentationModel(pl.LightningModule):
         if self.steps_per_epoch is None:
             raise RuntimeError("steps_per_epoch not set. This should be set in the `setup` hook.")
 
-        total_steps = self.steps_per_epoch * self.trainer.max_epochs
+        total_steps = int(self.steps_per_epoch * self.trainer.max_epochs)
         
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,

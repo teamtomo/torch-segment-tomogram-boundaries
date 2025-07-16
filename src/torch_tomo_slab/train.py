@@ -4,7 +4,6 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
-from sklearn.model_selection import train_test_split
 import segmentation_models_pytorch as smp
 
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -68,18 +67,22 @@ def run_training():
     torch.set_float32_matmul_precision('high')
 
     # --- 1. DATA SETUP ---
-    prepared_data_dir = Path(config.PREPARED_DATA_DIR)
-    all_pt_files = sorted(list(prepared_data_dir.glob("*.pt")))
-    if not all_pt_files:
-        raise FileNotFoundError(f"No '.pt' files found in {prepared_data_dir}")
+    # --- MODIFIED: Load data from pre-split directories ---
+    train_data_dir = Path(config.TRAIN_DATA_DIR)
+    val_data_dir = Path(config.VAL_DATA_DIR)
 
-    train_files, val_files = train_test_split(
-        all_pt_files, test_size=config.VALIDATION_FRACTION, shuffle=True, random_state=42
-    )
+    train_files = sorted(list(train_data_dir.glob("*.pt")))
+    val_files = sorted(list(val_data_dir.glob("*.pt")))
+
+    if not train_files:
+        raise FileNotFoundError(f"No training '.pt' files found in {train_data_dir}. Did you run the data preparation script?")
+    if not val_files:
+        raise FileNotFoundError(f"No validation '.pt' files found in {val_data_dir}. Did you run the data preparation script?")
 
     if global_rank == 0:
-        print(f"Found {len(all_pt_files)} total 2D sections.")
-        print(f"Training sections: {len(train_files)}, Validation sections: {len(val_files)}")
+        print(f"Found {len(train_files) + len(val_files)} total 2D sections, pre-split into:")
+        print(f"Training sections: {len(train_files)}")
+        print(f"Validation sections: {len(val_files)}")
 
     datamodule = SegmentationDataModule(
         train_pt_files=train_files, val_pt_files=val_files, patch_size=(config.PATCH_SIZE, config.PATCH_SIZE),
@@ -119,12 +122,12 @@ def run_training():
 
 
     checkpointer = ModelCheckpoint(
-        monitor=config.MONITOR_METRIC, mode="min",
+        monitor=config.MONITOR_METRIC, mode="max",
         filename=f"best-{{epoch}}-{{{config.MONITOR_METRIC}:.4f}}",
         save_top_k=config.CHECKPOINT_SAVE_TOP_K, verbose=True,
     )
     early_stopper = EarlyStopping(
-        monitor=config.MONITOR_METRIC, mode="min", patience=config.EARLY_STOPPING_PATIENCE,
+        monitor=config.MONITOR_METRIC, mode="max", patience=config.EARLY_STOPPING_PATIENCE,
         min_delta=config.EARLY_STOPPING_MIN_DELTA, verbose=True,
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")

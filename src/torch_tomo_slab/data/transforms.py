@@ -35,7 +35,7 @@ class JointTransform:
 
         # 2. Random Affine (applied together)
         affine_params = T.RandomAffine.get_params(
-            degrees=(-10, 10),
+            degrees=(-15, 15),
             translate=(0.1, 0.1),
             scale_ranges=(0.9, 1.1),
             shears=None,
@@ -62,37 +62,22 @@ class JointTransform:
         return sample
 
 
-class NormalizeSample:
-    """
-    Applies Z-score normalization to the 'image' tensor using pre-computed
-    dataset-wide mean and std from the config file.
-    """
-    def __init__(self):
-        # Read directly from the config file
-        mean = config.DATASET_MEAN
-        std = config.DATASET_STD
-        # Reshape for broadcasting: (C,) -> (C, 1, 1)
-        self.mean = torch.tensor(mean).view(-1, 1, 1)
-        self.std = torch.tensor(std).view(-1, 1, 1)
-        # Add a small epsilon to std to prevent division by zero
-        self.eps = 1e-8
-
-    def __call__(self, sample: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        image = sample['image']
-        # Use the pre-computed mean and std
-        sample['image'] = (image - self.mean) / (self.std + self.eps)
-        return sample
 
 def get_transforms(is_training: bool = True) -> T.Compose:
     """
     Create a torchvision transform pipeline for 2D medical image segmentation.
+    With pre-normalization, this pipeline now only contains augmentations.
     """
     transform_list: List[callable] = []
 
     if is_training:
         transform_list.append(JointTransform())
 
-    # For both training and validation, apply normalization as the final step.
-    transform_list.append(NormalizeSample())
+    # --- REMOVED: Normalization is no longer applied here. ---
+    # transform_list.append(NormalizeSample())
 
+    # If no transforms are needed (i.e., validation), return None or an empty Compose.
+    if not transform_list:
+        return None
+        
     return T.Compose(transform_list)

@@ -17,7 +17,7 @@ sources = ["src"]
 [project]
 name = "torch-tomo-slab"
 #dynamic = ["version"]
-version = "0.0.1a"
+version = "0.0.1b"
 description = "A PyTorch Lightning/SMP application to segment boundaries in tomographic volumes."
 readme = "README.md"
 requires-python = ">=3.9"
