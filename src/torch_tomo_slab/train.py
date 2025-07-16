@@ -49,6 +49,22 @@ def get_loss_function(name: str, weights: tuple = (0.5, 0.5)):
         dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         bce_loss = nn.BCEWithLogitsLoss()
         return CombinedLoss(dice_loss, bce_loss, weight1=weights[0], weight2=weights[1])
+    # --- MODIFIED: Use configured gamma and alpha for FocalLoss ---
+    elif name == "focal+dice":
+        focal_loss = smp.losses.FocalLoss(
+            mode='binary',
+            gamma=config.FOCAL_LOSS_GAMMA,
+            alpha=config.FOCAL_LOSS_ALPHA
+        )
+        dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
+        return CombinedLoss(focal_loss, dice_loss, weight1=weights[0], weight2=weights[1])
+    elif name == "tverskyloss":
+        return smp.losses.TverskyLoss(
+            mode='binary',
+            from_logits=True,
+            alpha=config.TVERSKY_ALPHA,
+            beta=config.TVERSKY_BETA
+        )
     else:
         raise ValueError(f"Unknown loss function: {name}")
 
@@ -92,8 +108,10 @@ def run_training():
     )
 
     # --- 2. MODEL AND LOSS FUNCTION SETUP ---
+    # --- FIX: Pass a dictionary to decoder_use_norm to enable affine parameters ---
     model = smp.create_model(
-        arch=config.MODEL_ARCH, encoder_name=config.MODEL_ENCODER, classes=1, in_channels=2
+        arch=config.MODEL_ARCH, encoder_name=config.MODEL_ENCODER, classes=1, in_channels=2,
+        decoder_use_norm={"type": "instancenorm", "affine": True}
     )
     loss_fn = get_loss_function(config.LOSS_FUNCTION, config.LOSS_WEIGHTS)
     
@@ -101,6 +119,12 @@ def run_training():
     if global_rank == 0:
         loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
         print(f"Using loss function: {loss_name}")
+        if 'focal' in config.LOSS_FUNCTION.lower():
+             print(f"  - Focal Loss Params: gamma={config.FOCAL_LOSS_GAMMA}, alpha={config.FOCAL_LOSS_ALPHA}")
+        if 'tversky' in config.LOSS_FUNCTION.lower():
+             print(f"  - Tversky Loss Params: alpha={config.TVERSKY_ALPHA}, beta={config.TVERSKY_BETA}")
+        print("Using Instance Normalization (with affine=True) in the U-Net decoder.")
+
 
     pl_model = SegmentationModel(
         model=model,
@@ -112,8 +136,9 @@ def run_training():
     if global_rank == 0:
         print("\n--- Configuring Logger and Callbacks ---")
     
+    # --- MODIFIED: Added norm type to experiment details for clearer logging ---
     experiment_name = f"{config.MODEL_ARCH}-{config.MODEL_ENCODER}"
-    experiment_details = f"loss-{config.LOSS_FUNCTION}_patch-{config.PATCH_SIZE}"
+    experiment_details = f"loss-{config.LOSS_FUNCTION}_norm-instance_patch-{config.PATCH_SIZE}"
 
     logger = TensorBoardLogger(
         save_dir="lightning_logs",
