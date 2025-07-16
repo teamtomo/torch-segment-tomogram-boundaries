@@ -1,4 +1,3 @@
-      
 from pathlib import Path
 
 BASE_DATA_PATH = Path("/home/pranav/data/training/torch-tomo-slab")  # Adjust this to your project's root data folder
@@ -29,11 +28,25 @@ MODEL_ARCH = "Unet"
 MODEL_ENCODER = "resnet34"
 
 # Training Hyperparameters
-LEARNING_RATE = 2e-4
-LOSS_FUNCTION = "dice+bce"  # Options: 'dice', 'bce', 'dice+bce'
-LOSS_WEIGHTS = (0.5,0.5)
+LEARNING_RATE = 2e-5
+# --- MODIFIED: Added more loss options ---
+LOSS_FUNCTION = "tverskyloss"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss'
+LOSS_WEIGHTS = (0.5, 0.5)  # Used for combined losses like dice+bce or focal+dice
 MAX_EPOCHS = 50
 PRECISION='bf16-mixed'
+
+# --- NEW: FOCAL LOSS CONFIGURATION ---
+# These are only used if 'focal' is in the LOSS_FUNCTION name
+FOCAL_LOSS_GAMMA = 2.0  # The focusing parameter
+FOCAL_LOSS_ALPHA = None # The alpha balancing weight. Use None for 0.5, or e.g., 0.75
+
+# --- NEW: TVERSKY LOSS CONFIGURATION ---
+# These are only used if LOSS_FUNCTION = 'tverskyloss'
+# alpha penalizes False Positives, beta penalizes False Negatives. alpha+beta should be ~1
+TVERSKY_ALPHA = 0.3
+TVERSKY_BETA = 0.7
+
+
 # Dataloader & Augmentation
 PATCH_SIZE = 128
 OVERLAP = 64
@@ -78,5 +91,3 @@ CHECKPOINT_SAVE_TOP_K = 1 # Save only the single best model
 USE_SWA = True
 SWA_LEARNING_RATE = 0.1*LEARNING_RATE # SWA learning rate is typically smaller
 SWA_START_EPOCH_FRACTION = 0.75 # Start SWA in the last 25% of epochs
-
-    
