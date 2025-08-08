@@ -1,60 +1,62 @@
-import torch
-from typing import List, Optional, Dict
+# src/torch_tomo_slab/data/dataset.py
+
 from pathlib import Path
+from typing import Dict, List, Optional
+
+import albumentations as A
+import numpy as np
+import torch
 from torch.utils.data import Dataset
-import torchvision.transforms as T
 
 
 class PTFileDataset(Dataset):
     """
-    A standard PyTorch Dataset to load 2D image-label pairs from pre-processed .pt files.
-    It ensures the output tensors are 3D (C, H, W) for 2D processing.
+    A Dataset class for loading pre-prepared 2D slice data from .pt files.
+    This version is designed to work seamlessly with the Albumentations pipeline.
     """
-
-    def __init__(self, pt_file_paths: List[Path], transform: Optional[T.Compose] = None):
-        super().__init__()
+    def __init__(self, pt_file_paths: List[Path], transform: Optional[A.Compose] = None):
+        """
+        Args:
+            pt_file_paths: A list of Paths to the .pt files.
+            transform: An Albumentations Compose object.
+        """
         self.pt_file_paths = pt_file_paths
         self.transform = transform
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Returns the number of samples in the dataset."""
         return len(self.pt_file_paths)
 
-    def __getitem__(self, idx: int) -> Dict:
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        Loads a .pt file, processes the tensors, and applies transforms.
+        Loads a sample, applies transforms, and returns it as a dictionary of tensors.
         """
+        # 1. Load data from the saved .pt file
         pt_path = self.pt_file_paths[idx]
         data = torch.load(pt_path, map_location='cpu')
 
-        image_tensor = data['image']
-        label_tensor = data['label']
+        # 2. Convert to numpy arrays, the format expected by Albumentations
+        # Image: (C, H, W) -> (H, W, C)
+        image_np = data['image'].numpy().transpose(1, 2, 0)
+        # Label: (1, H, W) -> (H, W)
+        label_np = data['label'].numpy().squeeze()
 
-        # Defensively remove all trailing singleton dimensions until the tensor is 3D.
-        # This makes the dataset robust to how the .pt files were saved.
-        while image_tensor.ndim > 3:
-            image_tensor = image_tensor.squeeze(-1)
-        while label_tensor.ndim > 3:
-            label_tensor = label_tensor.squeeze(-1)
-
-        # Ensure tensors are at least 3D (for cases where C=1 was squeezed)
-        if image_tensor.ndim == 2:  # H, W -> 1, H, W
-            image_tensor = image_tensor.unsqueeze(0)
-
-        if label_tensor.ndim == 2:
-            label_tensor = label_tensor.unsqueeze(0)
-        
-        if image_tensor.shape[0] == 2:
-            # Tame the variance channel (channel at index 1)
-            image_tensor[1, :, :] = torch.log1p(image_tensor[1, :, :])
-
-        sample = {
-            'image': image_tensor,  # Should be (C, H, W)
-            'label': label_tensor,  # Should be (1, H, W)
-            'file_path': str(pt_path),
-            **data.get('metadata', {})
-        }
-
+        # 3. Apply the augmentation pipeline if it exists
         if self.transform:
-            sample = self.transform(sample)
+            # The A.Compose pipeline takes a dictionary of numpy arrays
+            transformed = self.transform(image=image_np, mask=label_np)
+            
+            # ToTensorV2 has already converted the image and mask to torch.Tensors
+            image_tensor = transformed['image']
+            label_tensor = transformed['mask']
 
-        return sample
+            # The label tensor from ToTensorV2 has shape (H,W), add channel dim
+            return {
+                'image': image_tensor.float(), # Ensure image is float
+                'label': label_tensor.unsqueeze(0).long() # Ensure label is long
+            }
+        else:
+            # If no transforms, convert back to tensors manually
+            image_tensor = torch.from_numpy(image_np.transpose(2, 0, 1))
+            label_tensor = torch.from_numpy(label_np).unsqueeze(0)
+            return {'image': image_tensor, 'label': label_tensor}

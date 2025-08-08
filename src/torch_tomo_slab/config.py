@@ -16,8 +16,11 @@ TRAIN_DATA_DIR = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR = PREPARED_DATA_BASE_DIR / "val"
 MULTIPLY_TOMO_MASK = True
 
+#Resize volume-labels to these dims
+TARGET_VOLUME_SHAPE = (256, 512, 512)
+
 # Number of 2D slices to extract from each 3D volume
-NUM_SECTIONS_PER_VOLUME = 150
+NUM_SECTIONS_PER_VOLUME = 256
 
 # Kernel size for the local variance calculation
 LOCAL_VARIANCE_KERNEL_SIZE = 5
@@ -28,11 +31,11 @@ MODEL_ARCH = "Unet"
 MODEL_ENCODER = "mobilenet_v2"
 
 # Training Hyperparameters
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 1e-4
 # --- MODIFIED: Added more loss options ---
-LOSS_FUNCTION = "focal+dice"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss'
-LOSS_WEIGHTS = (0.3, 0.7)  # Used for combined losses like dice+bce or focal+dice
-MAX_EPOCHS = 10
+LOSS_FUNCTION = "lovasz"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss','lovasz'
+LOSS_WEIGHTS = (0.6, 0.4)  # Used for combined losses like dice+bce or focal+dice
+MAX_EPOCHS = 50
 PRECISION='bf16-mixed'
 
 # --- NEW: FOCAL LOSS CONFIGURATION ---
@@ -59,7 +62,7 @@ NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 # Patch Sampling Strategy
 SAMPLES_PER_VOLUME = 100  # Number of patches to extract per 2D image
 ALPHA_FOR_DROPPING = 0.75  # Controls how aggressively to drop empty patches. 0=no drop, 1=aggressive.
-VALIDATION_PATCH_SAMPLING = True  # Set to False for validation on full images, True for patches
+VALIDATION_PATCH_SAMPLING = False  # Set to False for validation on full images, True for patches
 
 # --- TRAINER CONFIGURATION ---
 ACCELERATOR = "auto"  # Let PyTorch Lightning detect GPU/MPS/CPU

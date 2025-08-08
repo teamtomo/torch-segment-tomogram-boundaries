@@ -22,7 +22,6 @@ from torch_tomo_slab.data.dataloading import SegmentationDataModule
 
 # (Your CombinedLoss definition remains unchanged)
 class CombinedLoss(nn.Module):
-    # ... (no changes)
     def __init__(self, loss1: nn.Module, loss2: nn.Module, weight1: float = 0.5, weight2: float = 0.5):
         super().__init__()
         self.loss1 = loss1
@@ -31,7 +30,7 @@ class CombinedLoss(nn.Module):
         self.weight2 = weight2
         loss1_name = self.loss1.__class__.__name__
         loss2_name = self.loss2.__class__.__name__
-        self.name = f"{self.weight1}*{loss1_name}_{self.weight2}*{loss2_name}"
+        self.name = f"{self.weight1}*{loss1_name}+{self.weight2}*{loss2_name}"
     def forward(self, pred, target):
         loss_val1 = self.loss1(pred, target)
         loss_val2 = self.loss2(pred, target)
@@ -41,6 +40,8 @@ class CombinedLoss(nn.Module):
 def get_loss_function(name: str, weights: tuple = (0.5, 0.5)):
     # This function now only creates the loss, it doesn't print.
     name = name.lower()
+    if name == 'lovasz':
+        return smp.losses.LovaszLoss(mode='binary', from_logits=True)
     if name == "diceloss":
         return smp.losses.DiceLoss(mode='binary', from_logits=True)
     elif name == "bcewithlogitsloss":
@@ -49,7 +50,6 @@ def get_loss_function(name: str, weights: tuple = (0.5, 0.5)):
         dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
         bce_loss = nn.BCEWithLogitsLoss()
         return CombinedLoss(dice_loss, bce_loss, weight1=weights[0], weight2=weights[1])
-    # --- MODIFIED: Use configured gamma and alpha for FocalLoss ---
     elif name == "focal+dice":
         focal_loss = smp.losses.FocalLoss(
             mode='binary',
@@ -83,29 +83,29 @@ def run_training():
     torch.set_float32_matmul_precision('high')
 
     # --- 1. DATA SETUP ---
-    # --- MODIFIED: Load data from pre-split directories ---
     train_data_dir = Path(config.TRAIN_DATA_DIR)
     val_data_dir = Path(config.VAL_DATA_DIR)
-
     train_files = sorted(list(train_data_dir.glob("*.pt")))
     val_files = sorted(list(val_data_dir.glob("*.pt")))
 
-    if not train_files:
-        raise FileNotFoundError(f"No training '.pt' files found in {train_data_dir}. Did you run the data preparation script?")
-    if not val_files:
-        raise FileNotFoundError(f"No validation '.pt' files found in {val_data_dir}. Did you run the data preparation script?")
-
-    if global_rank == 0:
-        print(f"Found {len(train_files) + len(val_files)} total 2D sections, pre-split into:")
-        print(f"Training sections: {len(train_files)}")
-        print(f"Validation sections: {len(val_files)}")
-
+    if not train_files or not val_files:
+        raise FileNotFoundError("Training or validation data not found. Did you run the p02 script?")
+    
+    # --- THIS IS THE BLOCK TO REPLACE ---
+    # We now use the simplified DataModule, passing only the necessary arguments.
     datamodule = SegmentationDataModule(
-        train_pt_files=train_files, val_pt_files=val_files, patch_size=(config.PATCH_SIZE, config.PATCH_SIZE),
-        batch_size=config.BATCH_SIZE, num_workers=config.NUM_WORKERS,
-        samples_per_volume=config.SAMPLES_PER_VOLUME, alpha_for_dropping=config.ALPHA_FOR_DROPPING,
-        val_patch_sampling=config.VALIDATION_PATCH_SAMPLING
+        train_pt_files=train_files,
+        val_pt_files=val_files,
+        batch_size=config.BATCH_SIZE,
+        num_workers=config.NUM_WORKERS,
     )
+
+    #datamodule = SegmentationDataModule(
+    #    train_pt_files=train_files, val_pt_files=val_files, patch_size=(config.PATCH_SIZE, config.PATCH_SIZE),
+    #    batch_size=config.BATCH_SIZE, num_workers=config.NUM_WORKERS,
+    #    samples_per_volume=config.SAMPLES_PER_VOLUME, alpha_for_dropping=config.ALPHA_FOR_DROPPING,
+    #    val_patch_sampling=config.VALIDATION_PATCH_SAMPLING
+    #)
 
     # --- 2. MODEL AND LOSS FUNCTION SETUP ---
     # --- FIX: Pass a dictionary to decoder_use_norm to enable affine parameters ---
@@ -116,8 +116,10 @@ def run_training():
         encoder_depth=3,
         decoder_channels=[128,64,32],
         decoder_droput=0.4,
+        decoder_attention_type='scse',
         classes=1, in_channels=2,
-        decoder_use_norm={"type": "instancenorm", "affine": True}
+        decoder_use_norm={"type": "instancenorm", "affine": True},
+        activation="sigmoid"
     )
     loss_fn = get_loss_function(config.LOSS_FUNCTION, config.LOSS_WEIGHTS)
     
