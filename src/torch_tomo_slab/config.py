@@ -28,11 +28,11 @@ MODEL_ARCH = "Unet"
 MODEL_ENCODER = "resnet34"
 
 # Training Hyperparameters
-LEARNING_RATE = 2e-5
+LEARNING_RATE = 4e-4
 # --- MODIFIED: Added more loss options ---
-LOSS_FUNCTION = "tverskyloss"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss'
+LOSS_FUNCTION = "focal+dice"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss'
 LOSS_WEIGHTS = (0.5, 0.5)  # Used for combined losses like dice+bce or focal+dice
-MAX_EPOCHS = 50
+MAX_EPOCHS = 10
 PRECISION='bf16-mixed'
 
 # --- NEW: FOCAL LOSS CONFIGURATION ---
@@ -57,9 +57,9 @@ NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 
 
 # Patch Sampling Strategy
-SAMPLES_PER_VOLUME = 70  # Number of patches to extract per 2D image
+SAMPLES_PER_VOLUME = 100  # Number of patches to extract per 2D image
 ALPHA_FOR_DROPPING = 0.75  # Controls how aggressively to drop empty patches. 0=no drop, 1=aggressive.
-VALIDATION_PATCH_SAMPLING = False  # Set to False for validation on full images, True for patches
+VALIDATION_PATCH_SAMPLING = True  # Set to False for validation on full images, True for patches
 
 # --- TRAINER CONFIGURATION ---
 ACCELERATOR = "auto"  # Let PyTorch Lightning detect GPU/MPS/CPU
@@ -67,14 +67,17 @@ DEVICES = 2
 LOG_EVERY_N_STEPS = 10
 CHECK_VAL_EVERY_N_EPOCH = 1
 
-# --- NEW: LEARNING RATE SCHEDULER CONFIGURATION ---
+# --- MODIFIED: LEARNING RATE SCHEDULER CONFIGURATION FOR ReduceLROnPlateau ---
 USE_LR_SCHEDULER = True
-# Number of epochs to slowly ramp up the learning rate from 0
-SCHEDULER_WARMUP_EPOCHS = 5
-# The maximum learning rate is the one we already defined
-# SCHEDULER_MAX_LR = LEARNING_RATE
-# The minimum learning rate at the end of the cosine cycle
-SCHEDULER_MIN_LR = 1e-6
+# The metric to monitor for reducing the LR, should match MONITOR_METRIC
+SCHEDULER_MONITOR = "val_dice"
+# How many epochs to wait for improvement before reducing LR
+SCHEDULER_PATIENCE = 3
+# The factor by which to reduce the learning rate (e.g., 0.1 = 10x reduction)
+SCHEDULER_FACTOR = 0.2
+# The minimum learning rate to ever decay to
+SCHEDULER_MIN_LR = 1e-7
+
 
 # --- CALLBACK CONFIGURATION ---
 # The metric to monitor for checkpointing and early stopping
