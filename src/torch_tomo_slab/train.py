@@ -110,7 +110,13 @@ def run_training():
     # --- 2. MODEL AND LOSS FUNCTION SETUP ---
     # --- FIX: Pass a dictionary to decoder_use_norm to enable affine parameters ---
     model = smp.create_model(
-        arch=config.MODEL_ARCH, encoder_name=config.MODEL_ENCODER, classes=1, in_channels=2,
+        arch=config.MODEL_ARCH, 
+        encoder_name=config.MODEL_ENCODER,
+        encoder_weights=None,
+        encoder_depth=3,
+        decoder_channels=[128,64,32],
+        decoder_droput=0.4,
+        classes=1, in_channels=2,
         decoder_use_norm={"type": "instancenorm", "affine": True}
     )
     loss_fn = get_loss_function(config.LOSS_FUNCTION, config.LOSS_WEIGHTS)
@@ -171,7 +177,8 @@ def run_training():
         precision=config.PRECISION, log_every_n_steps=config.LOG_EVERY_N_STEPS,
         check_val_every_n_epoch=config.CHECK_VAL_EVERY_N_EPOCH,
         logger=logger,
-        callbacks=callbacks
+        callbacks=callbacks,
+        strategy='ddp_find_unused_parameters_true'
     )
 
     # --- 4. START TRAINING ---

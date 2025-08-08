@@ -1,83 +1,90 @@
-from typing import Dict, Tuple, List
+from typing import Dict, List
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import numpy as np
 import torch
-import torchvision.transforms as T
-import torchvision.transforms.functional as F
-from torchvision.transforms import InterpolationMode
 
-from torch_tomo_slab import config
-
-class JointTransform:
+# This wrapper class makes the albumentations pipeline seamlessly compatible 
+# with your existing PyTorch Lightning DataModule and Dataset.
+class AlbumentationsWrapper:
     """
-    Applies the same random geometric transform to an image and its label map.
-    Operates on a dictionary of tensors.
+    A wrapper to apply Albumentations transformations to the sample dictionary
+    {'image': tensor, 'label': tensor} produced by your PTFileDataset.
     """
-
-    def __init__(self):
-        # These are just for storing parameters, the logic is custom.
-        self.affine_params = T.RandomAffine.get_params(
-            degrees=(-10, 10),
-            translate=(0.1, 0.1),
-            scale_ranges=(0.9, 1.1),
-            shears=None,
-            img_size=[1, 1]  # Placeholder, will be replaced
-        )
+    def __init__(self, transforms: A.Compose):
+        self.transforms = transforms
 
     def __call__(self, sample: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        image, label = sample['image'], sample['label']
+        # Albumentations works with NumPy arrays and specific dictionary keys.
+        # We convert the image tensor from (C, H, W) to a NumPy array (H, W, C).
+        image_np = sample['image'].numpy().transpose(1, 2, 0)
+        
+        # We convert the label tensor from (1, H, W) to a NumPy array (H, W).
+        mask_np = sample['label'].numpy().squeeze()
 
-        # 1. Random Flips (50% chance for each)
-        if torch.rand(1) < 0.5:
-            image = F.hflip(image)
-            label = F.hflip(label)
-        if torch.rand(1) < 0.5:
-            image = F.vflip(image)
-            label = F.vflip(label)
+        # Apply the transformations. Albumentations requires the keys 'image' and 'mask'.
+        transformed = self.transforms(image=image_np, mask=mask_np)
 
-        # 2. Random Affine (applied together)
-        affine_params = T.RandomAffine.get_params(
-            degrees=(-15, 15),
-            translate=(0.1, 0.1),
-            scale_ranges=(0.9, 1.1),
-            shears=None,
-            img_size=list(image.shape[-2:])
-        )
-        image = F.affine(image, *affine_params, interpolation=InterpolationMode.BILINEAR)
-        # Use NEAREST for the label to preserve integer class values
-        label = F.affine(label, *affine_params, interpolation=InterpolationMode.NEAREST)
+        # The ToTensorV2() transform at the end of the pipeline handles the conversion
+        # back to PyTorch Tensors and moves the channel dimension to the front for the image.
+        transformed_image = transformed['image']
+        
+        # The transformed mask will be a (H, W) tensor, so we add the channel dimension
+        # back to match the expected shape of (1, H, W).
+        transformed_mask = transformed['mask'].unsqueeze(0)
 
-        # 3. Intensity transforms (applied only to image)
-        # Using ColorJitter on a 2-channel scientific image is possible but can have
-        # unexpected effects. Let's use more direct methods.
-        # Add random noise
-        if torch.rand(1) < 0.3:
-            noise = torch.randn_like(image) * 0.05
-            image = image + noise
-
-        # Random blur
-        if torch.rand(1) < 0.3:
-            image = F.gaussian_blur(image, kernel_size=3, sigma=(0.1, 1.0))
-
-        sample['image'] = image
-        sample['label'] = label
+        # Update the sample dictionary with the augmented data.
+        sample['image'] = transformed_image
+        sample['label'] = transformed_mask
+        
         return sample
 
-
-
-def get_transforms(is_training: bool = True) -> T.Compose:
+def get_transforms(is_training: bool = True) -> AlbumentationsWrapper:
     """
-    Create a torchvision transform pipeline for 2D medical image segmentation.
-    With pre-normalization, this pipeline now only contains augmentations.
+    Returns a composition of transformations for data augmentation using Albumentations.
+    
+    Args:
+        is_training (bool): If True, returns a robust set of augmentations for training.
+                            If False, returns a minimal pipeline for validation/testing.
     """
-    transform_list: List[callable] = []
-
     if is_training:
-        transform_list.append(JointTransform())
+        # Define a rich set of augmentations for the training set to combat overfitting.
+        # Each transform is applied with a given probability `p`.
+        transform_list = A.Compose([
+            # --- Geometric Transforms ---
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.ShiftScaleRotate(
+                shift_limit=0.0625, 
+                scale_limit=0.1, 
+                rotate_limit=15, 
+                p=0.7,
+                border_mode=0 # Pad with black
+            ),
+            
+            # --- Pixel-level Transforms ---
+            # Adjust brightness and contrast
+            A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.75),
+            # Add Gaussian noise
+            A.GaussNoise(var_limit=(10.0, 50.0), p=0.5),
 
-    # --- REMOVED: Normalization is no longer applied here. ---
-    # transform_list.append(NormalizeSample())
+            # --- Blur Transforms ---
+            A.OneOf([
+                A.MotionBlur(p=0.2),
+                A.GaussianBlur(p=0.8),
+            ], p=0.5), # Apply one of the blur types with 50% probability
 
-    # If no transforms are needed (i.e., validation), return None or an empty Compose.
-    if not transform_list:
-        return None
-        
-    return T.Compose(transform_list)
+            # This must be the last transform in the pipeline. It converts the
+            # NumPy arrays to PyTorch Tensors and handles channel ordering.
+            ToTensorV2(),
+        ])
+    else:
+        # For validation, we only need to convert the data to a tensor.
+        # No random augmentations should be applied to get a consistent evaluation.
+        transform_list = A.Compose([
+            ToTensorV2(),
+        ])
+    
+    # Wrap the Albumentations pipeline to make it compatible with your dataloader
+    return AlbumentationsWrapper(transform_list)

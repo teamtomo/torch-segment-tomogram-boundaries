@@ -25,13 +25,13 @@ LOCAL_VARIANCE_KERNEL_SIZE = 5
 # --- TRAINING PARAMETERS ---
 # Model Architecture (from segmentation-models-pytorch)
 MODEL_ARCH = "Unet"
-MODEL_ENCODER = "resnet34"
+MODEL_ENCODER = "mobilenet_v2"
 
 # Training Hyperparameters
-LEARNING_RATE = 4e-4
+LEARNING_RATE = 2e-3
 # --- MODIFIED: Added more loss options ---
 LOSS_FUNCTION = "focal+dice"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss'
-LOSS_WEIGHTS = (0.5, 0.5)  # Used for combined losses like dice+bce or focal+dice
+LOSS_WEIGHTS = (0.3, 0.7)  # Used for combined losses like dice+bce or focal+dice
 MAX_EPOCHS = 10
 PRECISION='bf16-mixed'
 
