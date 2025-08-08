@@ -22,17 +22,16 @@ class SegmentationModel(pl.LightningModule):
         self.save_hyperparameters(ignore=['model', 'loss_function'])
         self.model = model
         self.criterion = loss_function
-        self.steps_per_epoch = None
+        # self.steps_per_epoch = None # No longer needed for ReduceLROnPlateau
 
     def setup(self, stage: str):
         """
         This hook is called after the datamodule has been prepared.
         We use it to calculate the number of steps per epoch and store it.
         """
-        if stage == 'fit':
-            train_loader = self.trainer.datamodule.train_dataloader()
-            self.steps_per_epoch = len(train_loader)
-            print(f"Detected {self.steps_per_epoch} steps per epoch for the scheduler.")
+        # This logic is no longer needed for ReduceLROnPlateau, but we can keep the hook
+        # in case we need it in the future.
+        pass
 
     def forward(self, x):
         return self.model(x)
@@ -83,9 +82,6 @@ class SegmentationModel(pl.LightningModule):
         num_images_to_log = min(8, image.size(0))
         grid_params = {"padding": 2, "pad_value": 1.0, "nrow": 4}
 
-        # --- THIS IS THE FIX for the black input image ---
-        # `normalize=True` rescales the Z-score normalized image to the [0, 1]
-        # range, making it visible in TensorBoard. This is for visualization only.
         input_grid = torchvision.utils.make_grid(
             image[:num_images_to_log, 0:1, :, :],
             **grid_params,
@@ -106,25 +102,29 @@ class SegmentationModel(pl.LightningModule):
         return dice
 
     def configure_optimizers(self):
+        """
+        Configures the optimizer and the learning rate scheduler.
+        This version uses ReduceLROnPlateau.
+        """
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
         
         if not config.USE_LR_SCHEDULER:
             return optimizer
 
-        if self.steps_per_epoch is None:
-            raise RuntimeError("steps_per_epoch not set. This should be set in the `setup` hook.")
-
-        total_steps = int(self.steps_per_epoch * self.trainer.max_epochs)
-        
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            max_lr=self.hparams.learning_rate,
-            total_steps=total_steps,
-            pct_start=config.SCHEDULER_WARMUP_EPOCHS / self.trainer.max_epochs,
-            anneal_strategy='cos',
+            mode='max',  # 'max' because we want to decay when val_dice stops increasing
+            factor=config.SCHEDULER_FACTOR,
+            patience=config.SCHEDULER_PATIENCE,
+            min_lr=config.SCHEDULER_MIN_LR,
         )
         
         return {
             "optimizer": optimizer,
-            "lr_scheduler": { "scheduler": scheduler, "interval": "step" },
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": config.SCHEDULER_MONITOR, # Connects to the metric we log
+                "interval": "epoch",
+                "frequency": 1,
+            },
         }
