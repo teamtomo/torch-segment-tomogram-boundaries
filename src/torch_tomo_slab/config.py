@@ -9,9 +9,7 @@ REFERENCE_TOMOGRAM_DIR = BASE_DATA_PATH/"data_in"/"volumes"
 
 # Output data from scripts
 MASK_OUTPUT_DIR =  BASE_DATA_PATH / "data_in" / "boundary_mask_voumes"
-# --- MODIFIED: Renamed PREPARED_DATA_DIR to be a base path ---
 PREPARED_DATA_BASE_DIR = BASE_DATA_PATH / "prepared_data"
-# --- NEW: Define separate directories for training and validation data ---
 TRAIN_DATA_DIR = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR = PREPARED_DATA_BASE_DIR / "val"
 MULTIPLY_TOMO_MASK = True
@@ -28,22 +26,21 @@ LOCAL_VARIANCE_KERNEL_SIZE = 5
 # --- TRAINING PARAMETERS ---
 # Model Architecture (from segmentation-models-pytorch)
 MODEL_ARCH = "Unet"
-MODEL_ENCODER = "mobilenet_v2"
+MODEL_ENCODER = "resnet18"
 
 # Training Hyperparameters
 LEARNING_RATE = 1e-4
 # --- MODIFIED: Added more loss options ---
-LOSS_FUNCTION = "lovasz"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss','lovasz'
-LOSS_WEIGHTS = (0.6, 0.4)  # Used for combined losses like dice+bce or focal+dice
+#LOSS_FUNCTION = "dice+boundary"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss','lovasz'
+LOSS_FUNCTION = "weighted_bce"  # Options: 'dice', 'bce', 'dice+bce', 'focal+dice', 'tverskyloss','lovasz'
+LOSS_WEIGHTS = (0.7, 0.3)  # Used for combined losses like dice+bce or focal+dice
 MAX_EPOCHS = 50
 PRECISION='bf16-mixed'
 
 # --- NEW: FOCAL LOSS CONFIGURATION ---
-# These are only used if 'focal' is in the LOSS_FUNCTION name
 FOCAL_LOSS_GAMMA = 2.0  # The focusing parameter
 FOCAL_LOSS_ALPHA = None # The alpha balancing weight. Use None for 0.5, or e.g., 0.75
 
-# --- NEW: TVERSKY LOSS CONFIGURATION ---
 # These are only used if LOSS_FUNCTION = 'tverskyloss'
 # alpha penalizes False Positives, beta penalizes False Negatives. alpha+beta should be ~1
 TVERSKY_ALPHA = 0.3
@@ -53,9 +50,8 @@ TVERSKY_BETA = 0.7
 # Dataloader & Augmentation
 PATCH_SIZE = 128
 OVERLAP = 64
-# --- NOTE: This fraction is now used by the data prep script for splitting volumes ---
 VALIDATION_FRACTION = 0.2
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 NUM_WORKERS = 8  # Adjust based on your machine's CPUs
 
 
@@ -77,9 +73,9 @@ SCHEDULER_MONITOR = "val_dice"
 # How many epochs to wait for improvement before reducing LR
 SCHEDULER_PATIENCE = 3
 # The factor by which to reduce the learning rate (e.g., 0.1 = 10x reduction)
-SCHEDULER_FACTOR = 0.2
+SCHEDULER_FACTOR = 0.1
 # The minimum learning rate to ever decay to
-SCHEDULER_MIN_LR = 1e-7
+SCHEDULER_MIN_LR = 1e-8
 
 
 # --- CALLBACK CONFIGURATION ---
