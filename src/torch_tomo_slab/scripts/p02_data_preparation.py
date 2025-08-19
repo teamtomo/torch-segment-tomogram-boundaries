@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from torch_tomo_slab import config
+from torch_tomo_slab import config, constants
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -19,7 +19,7 @@ def get_device() -> torch.device:
     logging.info("CUDA not available. Using CPU."); return torch.device("cpu")
 
 def resize_and_pad_3d(tensor: torch.Tensor, target_shape: Tuple[int, int, int], mode: str) -> torch.Tensor:
-    """Resizes and pads a 3D volume to a target shape."""
+
     is_label = (mode == 'label')
     input_dtype = tensor.dtype
     tensor = tensor.float()
@@ -32,7 +32,7 @@ def resize_and_pad_3d(tensor: torch.Tensor, target_shape: Tuple[int, int, int], 
         align_corners=False if not is_label else None
     )
     resized_tensor = resized_5d.squeeze(0).squeeze(0)
-    
+
     if is_label:
         resized_tensor = resized_tensor.to(input_dtype)
 
@@ -72,10 +72,10 @@ def find_data_pairs(vol_dir: Path, label_dir: Path) -> List[Tuple[Path, Path]]:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate standardized 2D training samples from 3D tomograms using robust 3D preprocessing.")
-    parser.add_argument("--vol_dir", type=str, default=config.REFERENCE_TOMOGRAM_DIR)
-    parser.add_argument("--mask_dir", type=str, default=config.MASK_OUTPUT_DIR)
-    parser.add_argument("--out_train_dir", type=str, default=config.TRAIN_DATA_DIR)
-    parser.add_argument("--out_val_dir", type=str, default=config.VAL_DATA_DIR)
+    parser.add_argument("--vol_dir", type=str, default=constants.REFERENCE_TOMOGRAM_DIR)
+    parser.add_argument("--mask_dir", type=str, default=constants.MASK_OUTPUT_DIR)
+    parser.add_argument("--out_train_dir", type=str, default=constants.TRAIN_DATA_DIR)
+    parser.add_argument("--out_val_dir", type=str, default=constants.VAL_DATA_DIR)
     args = parser.parse_args()
 
     device = get_device()
@@ -96,7 +96,7 @@ def main():
     val_split_idx = int(len(all_data_pairs) * config.VALIDATION_FRACTION)
     train_pairs, val_pairs = all_data_pairs[val_split_idx:], all_data_pairs[:val_split_idx]
     logging.info(f"Splitting into {len(train_pairs)} train and {len(val_pairs)} val volumes.")
-
+    
     for split_name, data_pairs, output_dir in [("TRAIN", train_pairs, out_train_dir), ("VAL", val_pairs, out_val_dir)]:
         logging.info(f"--- Processing {split_name} set ---")
         for vol_file, label_file in tqdm(data_pairs, desc=f"Processing {split_name} Tomograms"):
@@ -104,39 +104,28 @@ def main():
             try:
                 volume = torch.from_numpy(mrcfile.open(vol_file, permissive=True).data.astype(np.float32))
                 label = torch.from_numpy(mrcfile.open(label_file, permissive=True).data.astype(np.int8))
-                
                 volume_std = resize_and_pad_3d(volume, target_shape, mode='image').to(device)
                 label_std = resize_and_pad_3d(label, target_shape, mode='label').to(device)
-                
                 D, H, W = volume_std.shape
-
-                for i in range(config.NUM_SECTIONS_PER_VOLUME):
-                    
-                    # --- MODIFICATION TO SUM 15 FRAMES ---
-                    # We need a 7-pixel margin on each side of the center slice.
-                    margin = 7 
+                for i in range(constants.NUM_SECTIONS_PER_VOLUME):
+                    margin = 7
                     axis_to_slice = torch.randint(1, 3, (1,)).item()
-                    
-                    if axis_to_slice == 1: # XZ view
-                        # Ensure slice_idx is not too close to the edge
+
+                    if axis_to_slice == 1:
                         slice_idx = torch.randint(margin, H - margin, (1,)).item()
                         vol_slab = volume_std[:, slice_idx - margin : slice_idx + margin + 1, :]
                         ortho_img = torch.mean(vol_slab, dim=1)
                         ortho_label = label_std[:, slice_idx, :]
-                    else: # YZ view
-                        # Ensure slice_idx is not too close to the edge
+                    else:
                         slice_idx = torch.randint(margin, W - margin, (1,)).item()
                         vol_slab = volume_std[:, :, slice_idx - margin : slice_idx + margin + 1]
                         ortho_img = torch.mean(vol_slab, dim=2)
                         ortho_label = label_std[:, :, slice_idx]
-
                     ortho_img_norm = robust_normalization(ortho_img)
-                    ortho_img_var = local_variance_2d(ortho_img_norm, config.LOCAL_VARIANCE_KERNEL_SIZE)
+                    ortho_img_var = local_variance_2d(ortho_img_norm, constants.LOCAL_VARIANCE_KERNEL_SIZE)
                     two_channel_input = torch.stack([ortho_img_norm, ortho_img_var], dim=0)
-
-                    save_path = output_dir / f"{output_dir.name}_{vol_file.stem}_view_{i}.pt" # Unique filenames
+                    save_path = output_dir / f"{output_dir.name}_{vol_file.stem}_view_{i}.pt"
                     torch.save({'image': two_channel_input.cpu(), 'label': ortho_label.cpu().long()}, save_path)
-            
             except Exception as e:
                 logging.error(f"Failed to process {vol_file.name}. Error: {e}", exc_info=True)
             finally:

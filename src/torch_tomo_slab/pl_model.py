@@ -1,5 +1,3 @@
-# src/torch_tomo_slab/pl_model.py
-
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -27,12 +25,12 @@ class SegmentationModel(pl.LightningModule):
     def _common_step(self, batch, batch_idx, stage: str):
         image = batch['image']
         label = batch['label']
-        weight_map = batch['weight_map'] # Unpack weight map
+        weight_map = batch['weight_map']
         batch_size = image.size(0)
 
         pred_logits = self(image)
-        
-        # Pass all necessary components to the loss function
+
+
         loss = self.criterion(pred_logits, label, weight_map)
 
         self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage=='train'), on_epoch=True, batch_size=batch_size, sync_dist=True)
@@ -57,32 +55,44 @@ class SegmentationModel(pl.LightningModule):
         return loss
 
     def _log_images(self, batch: dict, pred_probs: torch.Tensor, stage_name: str):
-        # ... (no changes needed here) ...
+
         if self.logger is None or not hasattr(self.logger.experiment, 'add_image'):
             return
         image, label = batch['image'], batch['label']
         num_images_to_log = min(8, image.size(0))
         grid_params = {"padding": 2, "pad_value": 1.0, "nrow": 4}
+        
+        # Log input tomogram
         input_grid = torchvision.utils.make_grid(
             image[:num_images_to_log, 0:1, :, :],
             **grid_params,
             normalize=True
         )
         self.logger.experiment.add_image(f"{stage_name}/Input (Tomogram)", input_grid, self.current_epoch)
+        
+        # Log ground truth mask
         label_grid = torchvision.utils.make_grid(label[:num_images_to_log].to(torch.float32), **grid_params)
         self.logger.experiment.add_image(f"{stage_name}/Ground Truth", label_grid, self.current_epoch)
-        pred_grid = torchvision.utils.make_grid(pred_probs[:num_images_to_log].to(torch.float32), **grid_params)
-        self.logger.experiment.add_image(f"{stage_name}/Prediction", pred_grid, self.current_epoch)
+        
+        # Log model's confidence (grayscale probability map)
+        pred_prob_grid = torchvision.utils.make_grid(pred_probs[:num_images_to_log].to(torch.float32), **grid_params)
+        self.logger.experiment.add_image(f"{stage_name}/Prediction Probabilities", pred_prob_grid, self.current_epoch)
+        
+        # --- NEW: Log the final binary segmentation ---
+        pred_binary = (pred_probs > 0.5).float()
+        pred_binary_grid = torchvision.utils.make_grid(pred_binary[:num_images_to_log].to(torch.float32), **grid_params)
+        self.logger.experiment.add_image(f"{stage_name}/Prediction Binary", pred_binary_grid, self.current_epoch)
+
 
     def dice_coefficient(self, pred, target, smooth=1e-5):
-        # ... (no changes needed here) ...
+
         intersection = (pred * target).sum(dim=(1, 2, 3))
         union = pred.sum(dim=(1, 2, 3)) + target.sum(dim=(1, 2, 3))
         dice = torch.mean((2. * intersection + smooth) / (union + smooth))
         return dice
 
     def configure_optimizers(self):
-        # ... (no changes needed here) ...
+
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
         if not config.USE_LR_SCHEDULER:
             return optimizer
