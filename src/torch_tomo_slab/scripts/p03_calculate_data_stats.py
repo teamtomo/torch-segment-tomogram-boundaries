@@ -1,22 +1,17 @@
-# scripts/p03_verify_data_normalization.py
-# --- RENAMED LOGICALLY ---
 import torch
 from pathlib import Path
 from tqdm import tqdm
 import sys
 import numpy as np
 
-# Add project root to path
+
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-from torch_tomo_slab import config
+from torch_tomo_slab import constants
 from torch_tomo_slab.data.dataset import PTFileDataset
 
 def verify_stats(dataset: PTFileDataset):
-    """
-    Verifies the statistics of the pre-normalized dataset.
-    Calculates the min, max, mean, and std to confirm normalization.
-    """
-    # Use a subset of the data for faster verification
+
+
     num_samples_to_check = min(len(dataset), 500)
     indices = np.random.choice(len(dataset), num_samples_to_check, replace=False)
 
@@ -28,15 +23,15 @@ def verify_stats(dataset: PTFileDataset):
     print(f"Verifying stats on {num_samples_to_check} random samples...")
     for i in tqdm(indices):
         sample = dataset[i]
-        image = sample['image'].to(torch.float32) # C, H, W
-        
-        # We care about the stats of the primary tomogram channel (channel 0)
+        image = sample['image'].to(torch.float32)
+
+
         ch0 = image[0, :, :]
         all_mins.append(ch0.min().item())
         all_maxs.append(ch0.max().item())
         all_means.append(ch0.mean().item())
         all_stds.append(ch0.std().item())
-        
+
     print("\n--- Normalization Verification Results ---")
     print("These statistics are for the first channel (normalized tomogram slices).")
     print(f"Overall Mean: {np.mean(all_means):.4f} (Expected to be near 0)")
@@ -46,12 +41,12 @@ def verify_stats(dataset: PTFileDataset):
 
 
 if __name__ == "__main__":
-    train_data_dir = Path(config.TRAIN_DATA_DIR)
-    
+    train_data_dir = constants.TRAIN_DATA_DIR
+
     print(f"Loading training data from: {train_data_dir}")
-    
+
     train_pt_files = sorted(list(train_data_dir.glob("*.pt")))
-    
+
     if not train_pt_files:
         raise FileNotFoundError(
             f"No training files found in {train_data_dir}. "
@@ -59,5 +54,5 @@ if __name__ == "__main__":
         )
 
     dataset = PTFileDataset(pt_file_paths=train_pt_files)
-    
+
     verify_stats(dataset)

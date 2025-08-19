@@ -1,130 +1,93 @@
 import sys
-import os # <-- IMPORT ADDED
+import os
 from pathlib import Path
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
-
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import (
-    ModelCheckpoint,
-    EarlyStopping,
-    LearningRateMonitor,
-    StochasticWeightAveraging,
-    TQDMProgressBar
-)
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor, StochasticWeightAveraging, TQDMProgressBar
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from torch_tomo_slab import config
+from torch_tomo_slab import config, constants
 from torch_tomo_slab.pl_model import SegmentationModel
 from torch_tomo_slab.data.dataloading import SegmentationDataModule
+from torch_tomo_slab.losses import BoundaryLoss, WeightedBCELoss, CombinedLoss, SMPLossWrapper
+from torch_tomo_slab.callbacks import DynamicTrainingManager
 
-# (Your CombinedLoss definition remains unchanged)
-class CombinedLoss(nn.Module):
-    # ... (no changes)
-    def __init__(self, loss1: nn.Module, loss2: nn.Module, weight1: float = 0.5, weight2: float = 0.5):
-        super().__init__()
-        self.loss1 = loss1
-        self.loss2 = loss2
-        self.weight1 = weight1
-        self.weight2 = weight2
-        loss1_name = self.loss1.__class__.__name__
-        loss2_name = self.loss2.__class__.__name__
-        self.name = f"{self.weight1}*{loss1_name}_{self.weight2}*{loss2_name}"
-    def forward(self, pred, target):
-        loss_val1 = self.loss1(pred, target)
-        loss_val2 = self.loss2(pred, target)
-        return self.weight1 * loss_val1 + self.weight2 * loss_val2
+def get_loss_function(loss_config: dict):
+    name = loss_config['name'].lower()
+    params = loss_config.get('params', {})
+    from_logits = True # All our model outputs are logits
 
+    loss_lib = {
+        'bce': nn.BCEWithLogitsLoss(),
+        'weighted_bce': WeightedBCELoss(from_logits=from_logits),
+        'boundary': BoundaryLoss(from_logits=from_logits),
 
-def get_loss_function(name: str, weights: tuple = (0.5, 0.5)):
-    # This function now only creates the loss, it doesn't print.
-    name = name.lower()
-    if name == "diceloss":
-        return smp.losses.DiceLoss(mode='binary', from_logits=True)
-    elif name == "bcewithlogitsloss":
-        return nn.BCEWithLogitsLoss()
-    elif name == "dice+bce":
-        dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
-        bce_loss = nn.BCEWithLogitsLoss()
-        return CombinedLoss(dice_loss, bce_loss, weight1=weights[0], weight2=weights[1])
-    # --- MODIFIED: Use configured gamma and alpha for FocalLoss ---
-    elif name == "focal+dice":
-        focal_loss = smp.losses.FocalLoss(
-            mode='binary',
-            gamma=config.FOCAL_LOSS_GAMMA,
-            alpha=config.FOCAL_LOSS_ALPHA
-        )
-        dice_loss = smp.losses.DiceLoss(mode='binary', from_logits=True)
-        return CombinedLoss(focal_loss, dice_loss, weight1=weights[0], weight2=weights[1])
-    elif name == "tverskyloss":
-        return smp.losses.TverskyLoss(
-            mode='binary',
-            from_logits=True,
-            alpha=config.TVERSKY_ALPHA,
-            beta=config.TVERSKY_BETA
-        )
-    else:
+        # SMP losses wrapped to be compatible
+        'dice': SMPLossWrapper(smp.losses.DiceLoss(mode='binary'), from_logits=from_logits),
+        'focal': SMPLossWrapper(smp.losses.FocalLoss(mode='binary', **params.get('focal', {})), from_logits=from_logits),
+        'lovasz': SMPLossWrapper(smp.losses.LovaszLoss(mode='binary'), from_logits=from_logits),
+        'tversky': SMPLossWrapper(smp.losses.TverskyLoss(mode='binary', **params.get('tversky', {})), from_logits=from_logits),
+    }
+
+    if '+' not in name:
+        if name in loss_lib:
+            return loss_lib[name]
         raise ValueError(f"Unknown loss function: {name}")
 
+    # Handle combined losses
+    loss_components_names = name.split('+')
+    loss_weights = loss_config.get('weights')
+    if not loss_weights or len(loss_components_names) != len(loss_weights):
+        raise ValueError(f"Loss weights must be provided for combined loss '{name}' and match the number of components.")
+
+    losses_to_combine = {}
+    for comp_name, weight in zip(loss_components_names, loss_weights):
+        if comp_name in loss_lib:
+            losses_to_combine[comp_name] = (loss_lib[comp_name], weight)
+        else:
+            raise ValueError(f"Unknown component '{comp_name}' in combined loss.")
+            
+    return CombinedLoss(losses_to_combine, from_logits=from_logits)
 
 def run_training():
-    """Main function to configure and run the training pipeline."""
-    # --- NEW: Check for main process to control printing ---
-    # We check the environment variable for setup before the trainer is initialized.
-    # Default to '0' for non-distributed runs.
     global_rank = int(os.environ.get("GLOBAL_RANK", 0))
-
     if global_rank == 0:
         print("--- Running on main process (rank 0). Verbose output enabled. ---")
 
-    # Best Practice: Set matmul precision for modern GPUs
     torch.set_float32_matmul_precision('high')
 
-    # --- 1. DATA SETUP ---
-    # --- MODIFIED: Load data from pre-split directories ---
-    train_data_dir = Path(config.TRAIN_DATA_DIR)
-    val_data_dir = Path(config.VAL_DATA_DIR)
-
-    train_files = sorted(list(train_data_dir.glob("*.pt")))
-    val_files = sorted(list(val_data_dir.glob("*.pt")))
-
-    if not train_files:
-        raise FileNotFoundError(f"No training '.pt' files found in {train_data_dir}. Did you run the data preparation script?")
-    if not val_files:
-        raise FileNotFoundError(f"No validation '.pt' files found in {val_data_dir}. Did you run the data preparation script?")
-
-    if global_rank == 0:
-        print(f"Found {len(train_files) + len(val_files)} total 2D sections, pre-split into:")
-        print(f"Training sections: {len(train_files)}")
-        print(f"Validation sections: {len(val_files)}")
+    train_files = sorted(list(constants.TRAIN_DATA_DIR.glob("*.pt")))
+    val_files = sorted(list(constants.VAL_DATA_DIR.glob("*.pt")))
+    if not train_files or not val_files:
+        raise FileNotFoundError("Training or validation data not found. Did you run the p02 script?")
 
     datamodule = SegmentationDataModule(
-        train_pt_files=train_files, val_pt_files=val_files, patch_size=(config.PATCH_SIZE, config.PATCH_SIZE),
-        batch_size=config.BATCH_SIZE, num_workers=config.NUM_WORKERS,
-        samples_per_volume=config.SAMPLES_PER_VOLUME, alpha_for_dropping=config.ALPHA_FOR_DROPPING,
-        val_patch_sampling=config.VALIDATION_PATCH_SAMPLING
+        train_pt_files=train_files,
+        val_pt_files=val_files,
+        batch_size=config.BATCH_SIZE,
+        num_workers=config.NUM_WORKERS,
     )
 
-    # --- 2. MODEL AND LOSS FUNCTION SETUP ---
-    # --- FIX: Pass a dictionary to decoder_use_norm to enable affine parameters ---
     model = smp.create_model(
-        arch=config.MODEL_ARCH, encoder_name=config.MODEL_ENCODER, classes=1, in_channels=2,
-        decoder_use_norm={"type": "instancenorm", "affine": True}
+        arch=constants.MODEL_ARCH,
+        encoder_name=constants.MODEL_ENCODER,
+        encoder_weights="imagenet",
+        encoder_depth=5,
+        decoder_channels=[256, 128, 64, 32, 16],
+        decoder_attention_type='scse',
+        classes=1, in_channels=2,
+        activation=None
     )
-    loss_fn = get_loss_function(config.LOSS_FUNCTION, config.LOSS_WEIGHTS)
-    
-    # Centralize printing about the configuration
+
+    loss_fn = get_loss_function(config.LOSS_CONFIG)
+
     if global_rank == 0:
         loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
-        print(f"Using loss function: {loss_name}")
-        if 'focal' in config.LOSS_FUNCTION.lower():
-             print(f"  - Focal Loss Params: gamma={config.FOCAL_LOSS_GAMMA}, alpha={config.FOCAL_LOSS_ALPHA}")
-        if 'tversky' in config.LOSS_FUNCTION.lower():
-             print(f"  - Tversky Loss Params: alpha={config.TVERSKY_ALPHA}, beta={config.TVERSKY_BETA}")
-        print("Using Instance Normalization (with affine=True) in the U-Net decoder.")
-
+        print(f"Using Model: {constants.MODEL_ARCH}-{constants.MODEL_ENCODER} (ImageNet pre-trained)")
+        print(f"Using Loss Function: {loss_name}")
 
     pl_model = SegmentationModel(
         model=model,
@@ -132,66 +95,72 @@ def run_training():
         learning_rate=config.LEARNING_RATE,
     )
 
-    # --- 3. LOGGER, CALLBACKS & TRAINER CONFIGURATION ---
     if global_rank == 0:
         print("\n--- Configuring Logger and Callbacks ---")
-    
-    # --- MODIFIED: Added norm type to experiment details for clearer logging ---
-    experiment_name = f"{config.MODEL_ARCH}-{config.MODEL_ENCODER}"
-    experiment_details = f"loss-{config.LOSS_FUNCTION}_norm-instance_patch-{config.PATCH_SIZE}"
-
+    experiment_name = f"{constants.MODEL_ARCH}-{constants.MODEL_ENCODER}"
+    experiment_details = f"loss-{config.LOSS_CONFIG['name'].replace('+', '_')}"
     logger = TensorBoardLogger(
         save_dir="lightning_logs",
         name=f"{experiment_name}/{experiment_details}"
     )
-
-
+    
     checkpointer = ModelCheckpoint(
         monitor=config.MONITOR_METRIC, mode="max",
         filename=f"best-{{epoch}}-{{{config.MONITOR_METRIC}:.4f}}",
         save_top_k=config.CHECKPOINT_SAVE_TOP_K, verbose=True,
     )
-    early_stopper = EarlyStopping(
-        monitor=config.MONITOR_METRIC, mode="max", patience=config.EARLY_STOPPING_PATIENCE,
-        min_delta=config.EARLY_STOPPING_MIN_DELTA, verbose=True,
-    )
+    
     lr_monitor = LearningRateMonitor(logging_interval="step")
     progress_bar = TQDMProgressBar(refresh_rate=10)
-    callbacks = [progress_bar, checkpointer, early_stopper, lr_monitor]
+    callbacks = [progress_bar, checkpointer, lr_monitor]
 
+    if config.USE_DYNAMIC_MANAGER:
+        if global_rank == 0:
+            print("Using DynamicTrainingManager for adaptive SWA and Early Stopping.")
+        dynamic_manager = DynamicTrainingManager(
+            monitor=config.MONITOR_METRIC,
+            mode="max",
+            ema_alpha=config.EMA_ALPHA,
+            trigger_swa_patience=config.SWA_TRIGGER_PATIENCE,
+            early_stop_patience=config.EARLY_STOP_PATIENCE,
+            min_delta=config.EARLY_STOP_MIN_DELTA
+        )
+        callbacks.append(dynamic_manager)
+    else:
+        if global_rank == 0:
+            print("Using standard EarlyStopping callback.")
+        early_stopper = EarlyStopping(
+            monitor=config.MONITOR_METRIC, mode="max", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
+            min_delta=config.EARLY_STOP_MIN_DELTA, verbose=True,
+        )
+        callbacks.append(early_stopper)
+        
     if config.USE_SWA:
         if global_rank == 0:
-            swa_start_epoch = int(config.MAX_EPOCHS * config.SWA_START_EPOCH_FRACTION)
-            print(f"Enabling Stochastic Weight Averaging (SWA) starting at epoch {swa_start_epoch}.")
-        swa = StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=config.SWA_START_EPOCH_FRACTION)
+            print(f"Stochastic Weight Averaging (SWA) is enabled.")
+        # If using dynamic manager, SWA starts when triggered. Otherwise, it uses a fixed fraction.
+        swa_start = config.MAX_EPOCHS + 1 if config.USE_DYNAMIC_MANAGER else config.STANDARD_SWA_START_FRACTION
+        swa = StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start)
         callbacks.append(swa)
-
+        
     trainer = pl.Trainer(
         max_epochs=config.MAX_EPOCHS, accelerator=config.ACCELERATOR, devices=config.DEVICES,
         precision=config.PRECISION, log_every_n_steps=config.LOG_EVERY_N_STEPS,
         check_val_every_n_epoch=config.CHECK_VAL_EVERY_N_EPOCH,
         logger=logger,
-        callbacks=callbacks
+        callbacks=callbacks,
+        strategy='ddp_find_unused_parameters_true'
     )
-
-    # --- 4. START TRAINING ---
+    
     if global_rank == 0:
         print("\n--- Starting Training ---")
         print(f"To view logs, run: tensorboard --logdir={logger.save_dir}")
-
+        
     trainer.fit(pl_model, datamodule=datamodule)
     
-    # --- 5. POST-TRAINING SUMMARY ---
-    # Now that the trainer exists, we can use the more convenient `is_global_zero`.
     if trainer.is_global_zero:
         print("--- Training Finished ---")
         print(f"Best model checkpoint saved at: {checkpointer.best_model_path}")
-
-        if config.USE_SWA:
-            swa_model_path = Path(trainer.logger.log_dir) / "final_swa_model.pth"
-            torch.save(pl_model.model.state_dict(), swa_model_path)
-            print(f"Final (SWA-averaged) model weights saved to: {swa_model_path}")
-
 
 if __name__ == "__main__":
     run_training()
