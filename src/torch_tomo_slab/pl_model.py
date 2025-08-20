@@ -10,6 +10,7 @@ class SegmentationModel(pl.LightningModule):
             model: nn.Module,
             loss_function: nn.Module,
             learning_rate: float = 1e-3,
+            target_shape: tuple = None, # <-- ADD THIS
     ):
         super().__init__()
         self.save_hyperparameters(ignore=['model', 'loss_function'])

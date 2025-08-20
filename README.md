@@ -32,3 +32,11 @@ Lint files:
 ```sh
 uv run pre-commit run --all-files
 ```
+
+## TODO
+
+1. Fix p02 script to use tomo dims from constants for colume resizing
+2. Overhall the design to be API friendly and not script like as it is currently.
+3. Remove redundant losses from the architecture, weighted_bce +/- dice is sufficient.
+4. Move network arch to constants and import them when defining in relevant modules
+5. Consider vol_utils.py and im_utils.py modules for storing commonly used functions and prevent code duplication
