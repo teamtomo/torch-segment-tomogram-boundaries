@@ -82,7 +82,7 @@ def generate_mask_from_planes(planes: dict, volume_shape: tuple) -> np.ndarray:
     zz = np.arange(Nz)[:, np.newaxis, np.newaxis]
     return ((zz >= min_plane) & (zz <= max_plane)).astype(np.int8)
 
-class TomogramPredictor:
+class TomoSlabPredictor:
     """
     Handles loading a trained model and performing inference on 3D tomograms to generate slab masks.
     """

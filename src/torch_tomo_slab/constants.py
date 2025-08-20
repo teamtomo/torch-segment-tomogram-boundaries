@@ -1,11 +1,8 @@
 from pathlib import Path
-
+from .config import BASE_DATA_PATH
 # --- Core Project Paths ---
-# Base path for all data. Please adjust this to your system's layout.
-BASE_DATA_PATH = Path("/home/pranav/data/training/torch-tomo-slab")
 
 # Input data directories for script 01 and 02
-IMOD_MODEL_DIR = BASE_DATA_PATH / "data_in" / "mods"
 REFERENCE_TOMOGRAM_DIR = BASE_DATA_PATH / "data_in" / "volumes"
 
 # Output data directories from scripts

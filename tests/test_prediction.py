@@ -1,14 +1,14 @@
 # tests/test_prediction.py
 import numpy as np
 import torch
-from torch_tomo_slab.predict import TomogramPredictor, fit_best_plane
+from torch_tomo_slab.predict import TomoSlabPredictor, fit_best_plane
 import pytest
 
 
 def test_predictor_initialization(trained_checkpoint):
     """Test loading the model from a real checkpoint file."""
     assert trained_checkpoint.exists()
-    predictor = TomogramPredictor(model_checkpoint_path=str(trained_checkpoint))
+    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
     assert predictor.model is not None
     assert isinstance(predictor.model, torch.nn.Module)
     assert predictor.target_shape_3d is not None
@@ -16,7 +16,7 @@ def test_predictor_initialization(trained_checkpoint):
 
 def test_predict_from_numpy_array(trained_checkpoint):
     """Test prediction when the input is a NumPy array."""
-    predictor = TomogramPredictor(model_checkpoint_path=str(trained_checkpoint))
+    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
     # Input shape must match what the model was trained on to some extent
     input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
 
@@ -32,7 +32,7 @@ def test_predict_from_numpy_array(trained_checkpoint):
 
 def test_predict_from_file(trained_checkpoint, dummy_mrc_files, tmp_path):
     """Test prediction from an input file, writing to an output file."""
-    predictor = TomogramPredictor(model_checkpoint_path=str(trained_checkpoint))
+    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
     output_path = tmp_path / "output_mask.mrc"
 
     predictor.predict(

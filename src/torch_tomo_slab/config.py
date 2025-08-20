@@ -1,10 +1,15 @@
+from pathlib import Path
+
+# --- DATA ---
+BASE_DATA_PATH = Path("/home/pranav/data/training/torch-tomo-slab")
+
 # --- TRAINING HYPERPARAMETERS ---
 LEARNING_RATE = 1e-4
 MAX_EPOCHS = 50
 PRECISION = 'bf16-mixed'
 VALIDATION_FRACTION = 0.2
 
-# --- MODEL ARCHITECTURE (NEW) ---
+# --- MODEL ARCHITECTURE ---
 MODEL_CONFIG = {
     'arch': "Unet",
     'encoder_name': "resnet18",

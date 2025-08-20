@@ -1,11 +1,11 @@
-# https://peps.python.org/pep-0517/
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 # https://hatch.pypa.io/latest/config/metadata/
-#[tool.hatch.version]
-#source = "vcs"
+# THIS IS THE NEW SECTION TO ENABLE DYNAMIC VERSIONING
+[tool.hatch.version]
+source = "vcs"
 
 # read more about configuring hatch at:
 # https://hatch.pypa.io/latest/config/build/
@@ -16,14 +16,11 @@ sources = ["src"]
 # https://peps.python.org/pep-0621/
 [project]
 name = "torch-tomo-slab"
-#dynamic = ["version"]
-version = "0.0.1b"
 description = "A PyTorch Lightning/SMP application to segment boundaries in tomographic volumes."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "Pranav NM Shah", email = "p.shah.lab@gmail.com" }]
-# https://pypi.org/classifiers/
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: BSD License",
@@ -38,15 +35,12 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# --- UPDATED DEPENDENCIES ---
-# Core dependencies required for the project to run.
 dependencies = [
     "torch",
     "pytorch-lightning",
     "segmentation-models-pytorch",
     "torchio",
     "mrcfile",
-    "imodmodel",
     "scikit-learn",
     "pandas",
     "numpy",
@@ -55,22 +49,9 @@ dependencies = [
     "tensorboard"
 ]
 
-# https://peps.python.org/pep-0621/#dependencies-optional-dependencies
-# add dependencies for "extra" features here.  Not dev dependencies.
-# [project.optional-dependencies]
-# name = ["dependency"]
-
 [project.urls]
 homepage = "https://github.com/shahpnmlab/torch-tomo-slab"
 repository = "https://github.com/shahpnmlab/torch-tomo-slab"
-
-# --- UPDATED ENTRY POINTS ---
-# This makes your scripts runnable from the command line after installation
-[project.scripts]
-tomo-slab-create-masks = "torch_tomo_slab.scripts.p01_mask_preparation:main_cli"
-tomo-slab-prepare-data = "torch_tomo_slab.scripts.p02_data_preparation:main_cli"
-tomo-slab-train = "torch_tomo_slab.train:run_training"
-
 
 # https://peps.python.org/pep-0735/
 # setup with `uv sync` or `pip install -e . --group dev`
