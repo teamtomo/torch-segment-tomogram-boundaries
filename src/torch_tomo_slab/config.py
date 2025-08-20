@@ -4,23 +4,27 @@ MAX_EPOCHS = 50
 PRECISION = 'bf16-mixed'
 VALIDATION_FRACTION = 0.2
 
+# --- MODEL ARCHITECTURE (NEW) ---
+MODEL_CONFIG = {
+    'arch': "Unet",
+    'encoder_name': "resnet18",
+    'encoder_weights': "imagenet",
+    'encoder_depth': 5,
+    'decoder_channels': [256, 128, 64, 32, 16],
+    'decoder_attention_type': 'scse',
+    'classes': 1,
+    'in_channels': 2,
+    'activation': None
+}
+
 # --- Loss Function Configuration ---
 # 'name': Can be a single loss or multiple losses combined with '+'.
 # 'weights': A list of weights for combined losses. Must match the number of losses.
-# 'params': A nested dictionary for loss-specific hyperparameters.
+# 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG = {
-    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'focal', 'tversky', 'boundary', ''weighted_bce'.
-    'weights': [0.7, 0.3],     # Only used for combined losses like 'focal+dice'
-    'params': {
-        'focal': {
-            'gamma': 2.0,      # The focusing parameter
-            'alpha': None      # The alpha balancing weight (None defaults to 0.5)
-        },
-        'tversky': {           # alpha penalizes FPs, beta penalizes FNs
-            'alpha': 0.3,
-            'beta': 0.7
-        }
-    }
+    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
+    'params': {}             # Simplified: No longer need focal/tversky params
 }
 
 # --- DATALOADER & AUGMENTATION ---
@@ -28,7 +32,18 @@ BATCH_SIZE = 64
 NUM_WORKERS = 8      # Adjust based on your machine's CPUs
 OVERLAP = 64
 
-# --- DYNAMIC TRAINING MANAGEMENT (NEW) ---
+# --- AUGMENTATION PARAMETERS (NEW) ---
+AUGMENTATION_CONFIG = {
+    'CROP_SIZE': 512,
+    'PAD_SIZE': 1024,
+    'ROTATE_LIMIT': 90,
+    'BRIGHTNESS_CONTRAST_LIMIT': 0.2,
+    'GAUSS_NOISE_STD_RANGE': (0.0, 0.05),
+    'GAUSS_BLUR_LIMIT': (3, 7),
+    'LOCAL_VARIANCE_KERNEL_SIZE': 5
+}
+
+# --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER = True
 EMA_ALPHA = 0.3                # Smoothing factor for validation metric (higher means more responsive)
 SWA_TRIGGER_PATIENCE = 6       # Epochs of plateau before starting SWA

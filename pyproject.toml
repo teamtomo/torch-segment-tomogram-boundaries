@@ -50,7 +50,9 @@ dependencies = [
     "scikit-learn",
     "pandas",
     "numpy",
-    "matplotlib", # For visualization in notebooks or scripts
+    "matplotlib",
+    "albumentations",
+    "tensorboard"
 ]
 
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
@@ -82,6 +84,7 @@ dev = [
     "pre-commit-uv",
     "rich",
     "ruff",
+    "pytest-mock"
 ]
 
 [tool.uv.sources]

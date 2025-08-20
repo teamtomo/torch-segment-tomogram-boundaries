@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.ndimage import binary_erosion
-from scipy.ndimage.morphology import distance_transform_edt as distance_transform
 
 def generate_boundary_weight_map(mask: np.ndarray, high_weight: float = 10.0, base_weight: float = 1.0) -> np.ndarray:
     """

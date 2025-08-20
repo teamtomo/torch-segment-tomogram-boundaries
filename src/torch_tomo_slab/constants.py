@@ -20,15 +20,6 @@ MULTIPLY_TOMO_MASK = True
 # --- Data Processing Constants ---
 # Resize volume-labels to these dims
 TARGET_VOLUME_SHAPE = (256, 512, 512)
-FINAL_CROP_SIZE = 512
-
-# Kernel size for the local variance calculation in script 02
-LOCAL_VARIANCE_KERNEL_SIZE = 5
 
 # Number of 2D slices to extract from each 3D volume in script 02
 NUM_SECTIONS_PER_VOLUME = 256
-
-# --- Model Architecture ---
-# These are generally fixed for a set of experiments but can be moved to config.py if you change them frequently.
-MODEL_ARCH = "Unet"
-MODEL_ENCODER = "resnet18"
