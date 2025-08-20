@@ -1,3 +1,4 @@
+import torch
 from pathlib import Path
 
 # --- DATA ---
@@ -13,13 +14,12 @@ VALIDATION_FRACTION = 0.2
 MODEL_CONFIG = {
     'arch': "Unet",
     'encoder_name': "resnet18",
-    'encoder_weights': "imagenet",
+    'encoder_weights': None,
     'encoder_depth': 5,
     'decoder_channels': [256, 128, 64, 32, 16],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 2,
-    'activation': None
 }
 
 # --- Loss Function Configuration ---
@@ -33,9 +33,8 @@ LOSS_CONFIG = {
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE = 64
-NUM_WORKERS = 8      # Adjust based on your machine's CPUs
-OVERLAP = 64
+BATCH_SIZE: int = 64
+NUM_WORKERS: int = 8
 
 # --- AUGMENTATION PARAMETERS (NEW) ---
 AUGMENTATION_CONFIG = {
@@ -61,7 +60,7 @@ STANDARD_SWA_START_FRACTION = 0.75
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR = "auto"
-DEVICES = 2
+DEVICES = torch.cuda.device_count() if torch.cuda.is_available() else 1
 MONITOR_METRIC = "val_dice"
 LOG_EVERY_N_STEPS = 10
 CHECK_VAL_EVERY_N_EPOCH = 1

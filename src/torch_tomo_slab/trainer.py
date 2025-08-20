@@ -1,6 +1,8 @@
 # src/torch_tomo_slab/trainer.py
 import os
 from pathlib import Path
+from typing import List
+
 import torch
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
@@ -22,8 +24,14 @@ class TomoSlabTrainer:
     """
 
     def __init__(self,
-                 model_arch: str = constants.MODEL_ARCH,
-                 model_encoder: str = constants.MODEL_ENCODER,
+                 model_arch: str = config.MODEL_CONFIG['arch'],
+                 model_encoder: str = config.MODEL_CONFIG['encoder_name'],
+                 encoder_weights: str = config.MODEL_CONFIG['encoder_weights'],
+                 encoder_depth: int = config.MODEL_CONFIG['encoder_depth'],
+                 decoder_channels: List = config.MODEL_CONFIG['decoder_channels'],
+                 decoder_attention_type: str = config.MODEL_CONFIG['decoder_attention_type'],
+                 classes: int = config.MODEL_CONFIG['classes'],
+                 in_channels: int = config.MODEL_CONFIG['in_channels'],
                  loss_config: dict = config.LOSS_CONFIG,
                  learning_rate: float = config.LEARNING_RATE):
         """
@@ -36,6 +44,12 @@ class TomoSlabTrainer:
         """
         self.model_arch = model_arch
         self.model_encoder = model_encoder
+        self.encoder_weights = encoder_weights
+        self.encoder_depth = encoder_depth
+        self.decoder_channels = decoder_channels
+        self.decoder_attention_type = decoder_attention_type
+        self.classes = classes
+        self.in_channels = in_channels
         self.loss_config = loss_config
         self.learning_rate = learning_rate
         self.global_rank = int(os.environ.get("GLOBAL_RANK", 0))
@@ -56,11 +70,11 @@ class TomoSlabTrainer:
         base_model = smp.create_model(
             arch=self.model_arch,
             encoder_name=self.model_encoder,
-            encoder_weights="imagenet",
-            encoder_depth=5,
-            decoder_channels=[256, 128, 64, 32, 16],
-            decoder_attention_type='scse',
-            classes=1, in_channels=2,
+            encoder_weights=self.encoder_weights,
+            encoder_depth=self.encoder_depth,
+            decoder_channels=self.decoder_channels,
+            decoder_attention_type=self.decoder_attention_type,
+            classes=self.classes, in_channels=self.in_channels,
             activation=None
         )
         loss_fn = get_loss_function(self.loss_config)
