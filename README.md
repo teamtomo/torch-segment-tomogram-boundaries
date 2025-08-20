@@ -40,3 +40,5 @@ uv run pre-commit run --all-files
 3. Remove redundant losses from the architecture, weighted_bce +/- dice is sufficient.
 4. Move network arch to constants and import them when defining in relevant modules
 5. Consider vol_utils.py and im_utils.py modules for storing commonly used functions and prevent code duplication
+6. Augmentation values for image sizes are hardcoded and should be moved to constants.
+7. Use logging everywhere and not print statements.
