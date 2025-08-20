@@ -28,7 +28,6 @@ LOCAL_VARIANCE_KERNEL_SIZE = 5
 # Number of 2D slices to extract from each 3D volume in script 02
 NUM_SECTIONS_PER_VOLUME = 256
 
-
 # --- Model Architecture ---
 # These are generally fixed for a set of experiments but can be moved to config.py if you change them frequently.
 MODEL_ARCH = "Unet"

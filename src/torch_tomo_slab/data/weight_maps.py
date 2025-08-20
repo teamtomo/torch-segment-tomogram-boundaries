@@ -1,12 +1,10 @@
-# src/torch_tomo_slab/data/weight_maps.py
-
 import numpy as np
 from scipy.ndimage import binary_erosion
 from scipy.ndimage.morphology import distance_transform_edt as distance_transform
 
 def generate_boundary_weight_map(mask: np.ndarray, high_weight: float = 10.0, base_weight: float = 1.0) -> np.ndarray:
     """
-    Generates a weight map where pixels on the boundary of objects have a higher weight.
+    Generates a weight map where pixels on the boundary of objects have a higher weight
     Args:
         mask: The ground truth mask, assumed to be a 2D numpy array with integer values.
         high_weight: The weight to assign to boundary pixels.

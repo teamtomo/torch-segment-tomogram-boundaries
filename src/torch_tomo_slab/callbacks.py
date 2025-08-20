@@ -2,7 +2,6 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import StochasticWeightAveraging
 import logging
-
 log = logging.getLogger(__name__)
 
 class DynamicTrainingManager(pl.Callback):
