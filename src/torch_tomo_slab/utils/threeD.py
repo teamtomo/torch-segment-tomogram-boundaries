@@ -1,19 +1,33 @@
-# src/torch_tomo_slab/utils/threeD.py
+"""3D volume processing utilities for tomographic data.
+
+This module provides utilities for 3D volume manipulation including
+resizing, padding, and interpolation operations used in the tomographic
+processing pipeline.
+"""
+
 import torch
 import torch.nn.functional as F
 
 
 def resize_and_pad_3d(tensor: torch.Tensor, target_shape: tuple, mode: str) -> torch.Tensor:
     """
-    Resizes and pads a 3D tensor to a target shape.
+    Resize and pad 3D tensor to target shape with appropriate interpolation.
 
-    Args:
-        tensor: The input 3D tensor.
-        target_shape: A tuple (D, H, W) for the target shape.
-        mode: 'image' for continuous data (uses trilinear) or 'label' for discrete data (uses nearest).
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Input 3D tensor of shape (D, H, W).
+    target_shape : tuple
+        Target shape as (depth, height, width).
+    mode : str
+        Interpolation mode - 'image' for trilinear (continuous data) or 
+        'label' for nearest (discrete/label data).
 
-    Returns:
-        The resized and padded tensor.
+    Returns
+    -------
+    torch.Tensor
+        Resized and padded tensor with exact target_shape.
+        Padding uses median value for 'image' mode, 0 for 'label' mode.
     """
     is_label = (mode == 'label')
     input_dtype = tensor.dtype

@@ -3,46 +3,51 @@ import numpy as np
 import torch
 from torch_tomo_slab.predict import TomoSlabPredictor, fit_best_plane
 import pytest
-
+import warnings
 
 def test_predictor_initialization(trained_checkpoint):
     """Test loading the model from a real checkpoint file."""
-    assert trained_checkpoint.exists()
-    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
-    assert predictor.model is not None
-    assert isinstance(predictor.model, torch.nn.Module)
-    assert predictor.target_shape_3d is not None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        assert trained_checkpoint.exists()
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        assert predictor.model is not None
+        assert isinstance(predictor.model, torch.nn.Module)
+        assert predictor.target_shape_3d is not None
 
 
 def test_predict_from_numpy_array(trained_checkpoint):
     """Test prediction when the input is a NumPy array."""
-    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
-    # Input shape must match what the model was trained on to some extent
-    input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        # Input shape must match what the model was trained on to some extent
+        input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
 
-    # Use a small slab size for speed
-    result_mask = predictor.predict(input_tomo, slab_size=3)
+        # Use a small slab size for speed
+        result_mask = predictor.predict(input_tomo, slab_size=3)
 
-    assert isinstance(result_mask, np.ndarray)
-    assert result_mask.shape == input_tomo.shape
-    assert result_mask.dtype == np.int8
-    # The mask should be binary
-    assert np.all(np.isin(result_mask, [0, 1]))
+        assert isinstance(result_mask, np.ndarray)
+        assert result_mask.shape == input_tomo.shape
+        assert result_mask.dtype == np.int8
+        # The mask should be binary
+        assert np.all(np.isin(result_mask, [0, 1]))
 
 
 def test_predict_from_file(trained_checkpoint, dummy_mrc_files, tmp_path):
     """Test prediction from an input file, writing to an output file."""
-    predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
-    output_path = tmp_path / "output_mask.mrc"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        output_path = tmp_path / "output_mask.mrc"
 
-    predictor.predict(
-        input_tomogram=dummy_mrc_files["vol_path"],
-        output_path=output_path,
-        slab_size=3
-    )
+        predictor.predict(
+            input_tomogram=dummy_mrc_files["vol_path"],
+            output_path=output_path,
+            slab_size=3
+        )
 
-    assert output_path.exists()
-
+        assert output_path.exists()
 
 def test_fit_best_plane_logic():
     """Unit test for the plane fitting algorithm."""

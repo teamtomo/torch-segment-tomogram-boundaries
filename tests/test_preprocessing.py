@@ -1,5 +1,8 @@
 # tests/test_preprocessing.py
 import torch
+import os
+import numpy as np
+import mrcfile
 from torch_tomo_slab.processing import TrainingDataGenerator
 from torch_tomo_slab import constants
 
@@ -27,28 +30,46 @@ def test_find_data_pairs(data_dirs, dummy_mrc_files):
     assert pairs[0][1].name == "dummy_tomo.mrc"
 
 
-def test_resize_and_pad(data_dirs):
+from torch_tomo_slab.utils.threeD import resize_and_pad_3d
+
+
+def test_resize_and_pad():
     """Test the 3D resizing and padding logic."""
-    gen = TrainingDataGenerator(target_volume_shape=(32, 64, 64))
+    target_shape = (32, 64, 64)
 
     # Test up-scaling (padding)
     input_tensor = torch.randn(16, 32, 32)
-    resized = gen._resize_and_pad_3d(input_tensor, mode='image')
-    assert resized.shape == (32, 64, 64)
+    resized = resize_and_pad_3d(input_tensor, target_shape, mode='image')
+    assert resized.shape == target_shape
 
     # Test down-scaling
     input_tensor = torch.randn(48, 96, 96)
-    resized = gen._resize_and_pad_3d(input_tensor, mode='image')
-    assert resized.shape == (32, 64, 64)
+    resized = resize_and_pad_3d(input_tensor, target_shape, mode='image')
+    assert resized.shape == target_shape
 
 
-def test_generator_run(data_dirs, dummy_mrc_files):
+def test_generator_run(data_dirs, tmp_path):
     """Integration test for the TrainingDataGenerator.run() method."""
+    # Create a dummy mrc file in a temporary directory
+    shape = (32, 64, 64)
+    vol_data = np.arange(np.prod(shape), dtype=np.float32).reshape(shape)
+    vol_path = tmp_path / "dummy_tomo.mrc"
+    with mrcfile.new(vol_path) as mrc:
+        mrc.set_data(vol_data)
+
+    # Use the temporary directory for the test
+    volume_dir = tmp_path
+    mask_dir = tmp_path
+
+    # Clean up the train and val directories before running the test
+    for f in data_dirs["train_dir"].glob("*.pt"): os.remove(f)
+    for f in data_dirs["val_dir"].glob("*.pt"): os.remove(f)
+
     # Use a smaller target shape for faster testing
     target_shape = (16, 32, 32)
     gen = TrainingDataGenerator(
-        volume_dir=data_dirs["vol_dir"],
-        mask_dir=data_dirs["mask_dir"],
+        volume_dir=volume_dir,
+        mask_dir=mask_dir,
         output_train_dir=data_dirs["train_dir"],
         output_val_dir=data_dirs["val_dir"],
         validation_fraction=0.5,
@@ -57,7 +78,6 @@ def test_generator_run(data_dirs, dummy_mrc_files):
 
     gen.run()
 
-    # --- CORRECTED LOGIC ---
     # Check that output files were created in either train or val directory.
     train_files = list(data_dirs["train_dir"].glob("*.pt"))
     val_files = list(data_dirs["val_dir"].glob("*.pt"))
@@ -76,3 +96,5 @@ def test_generator_run(data_dirs, dummy_mrc_files):
     assert sample["image"].shape[0] == 2  # 2 channels
     # The label shape is (H, W), image is (C, H, W)
     assert sample["image"].shape[1:] == sample["label"].shape
+
+

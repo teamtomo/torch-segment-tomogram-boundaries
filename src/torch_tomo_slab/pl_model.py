@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchvision
+
 from torch_tomo_slab import config
 
 
@@ -77,17 +78,29 @@ class SegmentationModel(pl.LightningModule):
         return torch.mean((2. * intersection + smooth) / (union + smooth))
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
+        optimizer_config = config.OPTIMIZER_CONFIG
+        optimizer_name = optimizer_config["name"]
+        optimizer_params = optimizer_config["params"]
+        optimizer_params["lr"] = self.hparams.learning_rate
+
+        optimizer = getattr(torch.optim, optimizer_name)(self.parameters(), **optimizer_params)
+
         if not config.USE_LR_SCHEDULER:
             return optimizer
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='max', factor=config.SCHEDULER_FACTOR,
-            patience=config.SCHEDULER_PATIENCE, min_lr=config.SCHEDULER_MIN_LR,
-        )
+
+        scheduler_config = config.SCHEDULER_CONFIG
+        scheduler_name = scheduler_config["name"]
+        scheduler_params = scheduler_config["params"]
+        scheduler_monitor = scheduler_config["monitor"]
+
+        scheduler = getattr(torch.optim.lr_scheduler, scheduler_name)(optimizer, **scheduler_params)
+
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
-                "scheduler": scheduler, "monitor": config.SCHEDULER_MONITOR,
-                "interval": "epoch", "frequency": 1,
+                "scheduler": scheduler,
+                "monitor": scheduler_monitor,
+                "interval": "epoch",
+                "frequency": 1,
             },
         }

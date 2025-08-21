@@ -5,6 +5,7 @@ import numpy as np
 import mrcfile
 import pytorch_lightning as pl
 from pathlib import Path
+import warnings
 
 from torch_tomo_slab.trainer import TomoSlabTrainer
 from torch_tomo_slab import constants
@@ -38,9 +39,9 @@ def dummy_mrc_files(data_dirs):
     vol_path = data_dirs["vol_dir"] / "dummy_tomo.mrc"
     mask_path = data_dirs["mask_dir"] / "dummy_tomo.mrc"
 
-    with mrcfile.new(vol_path) as mrc:
+    with mrcfile.new(vol_path, overwrite=True) as mrc:
         mrc.set_data(vol_data)
-    with mrcfile.new(mask_path) as mrc:
+    with mrcfile.new(mask_path, overwrite=True) as mrc:
         mrc.set_data(mask_data)
 
     return {"vol_path": vol_path, "mask_path": mask_path}
@@ -49,19 +50,19 @@ def dummy_mrc_files(data_dirs):
 @pytest.fixture(scope="session")
 def dummy_pt_files(data_dirs):
     """Creates dummy .pt files for training and validation."""
-    for i in range(4):  # 4 training files
-        data = {
-            "image": torch.randn(2, 64, 64),
-            "label": torch.randint(0, 2, (1, 64, 64))
-        }
-        torch.save(data, data_dirs["train_dir"] / f"train_sample_{i}.pt")
+    # 1 training file
+    data = {
+        "image": torch.randn(2, 64, 64),
+        "label": torch.randint(0, 2, (1, 64, 64))
+    }
+    torch.save(data, data_dirs["train_dir"] / f"train_sample_0.pt")
 
-    for i in range(2):  # 2 validation files
-        data = {
-            "image": torch.randn(2, 64, 64),
-            "label": torch.randint(0, 2, (1, 64, 64))
-        }
-        torch.save(data, data_dirs["val_dir"] / f"val_sample_{i}.pt")
+    # 1 validation file
+    data = {
+        "image": torch.randn(2, 64, 64),
+        "label": torch.randint(0, 2, (1, 64, 64))
+    }
+    torch.save(data, data_dirs["val_dir"] / f"val_sample_0.pt")
     return data_dirs
 
 
@@ -71,22 +72,27 @@ def trained_checkpoint(dummy_pt_files, tmp_path_factory):
     Creates a real, lightweight model checkpoint by running training for one batch.
     This is the most reliable way to test model loading.
     """
-    # Override constants to point to our temporary data
-    constants.TRAIN_DATA_DIR = dummy_pt_files["train_dir"]
-    constants.VAL_DATA_DIR = dummy_pt_files["val_dir"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        # Override constants to point to our temporary data
+        constants.TRAIN_DATA_DIR = dummy_pt_files["train_dir"]
+        constants.VAL_DATA_DIR = dummy_pt_files["val_dir"]
 
-    trainer_api = TomoSlabTrainer()
+        trainer_api = TomoSlabTrainer(
+            train_data_dir=dummy_pt_files["train_dir"],
+            val_data_dir=dummy_pt_files["val_dir"]
+        )
 
-    # Use Lightning's fast_dev_run to run one training and validation batch
-    pl_trainer = pl.Trainer(
-        fast_dev_run=True,
-        accelerator="cpu",
-        logger=False,
-        enable_checkpointing=False
-    )
-    pl_trainer.fit(trainer_api._setup_model(), datamodule=trainer_api._setup_datamodule())
+        # Use Lightning's fast_dev_run to run one training and validation batch
+        pl_trainer = pl.Trainer(
+            fast_dev_run=True,
+            accelerator="cpu",
+            logger=False,
+            enable_checkpointing=False
+        )
+        pl_trainer.fit(trainer_api._setup_model(), datamodule=trainer_api._setup_datamodule())
 
-    checkpoint_path = tmp_path_factory.mktemp("checkpoints") / "test_model.ckpt"
-    pl_trainer.save_checkpoint(checkpoint_path)
+        checkpoint_path = tmp_path_factory.mktemp("checkpoints") / "test_model.ckpt"
+        pl_trainer.save_checkpoint(checkpoint_path)
 
-    return checkpoint_path
+        return checkpoint_path

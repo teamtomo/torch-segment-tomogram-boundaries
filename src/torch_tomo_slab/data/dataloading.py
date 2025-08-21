@@ -6,8 +6,8 @@ from typing import List, Optional
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 
-from .dataset import PTFileDataset
-from .transforms import get_transforms
+from torch_tomo_slab.data.dataset import PTFileDataset
+from torch_tomo_slab.data.transforms import get_transforms
 
 
 class SegmentationDataModule(pl.LightningDataModule):
@@ -15,6 +15,7 @@ class SegmentationDataModule(pl.LightningDataModule):
     A simplified DataModule that loads full, pre-standardized 2D images
     and applies the robust augmentation pipeline.
     """
+
     def __init__(
         self,
         train_pt_files: List[Path],

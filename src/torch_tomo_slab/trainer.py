@@ -1,46 +1,115 @@
-# src/torch_tomo_slab/trainer.py
-import os
-from pathlib import Path
-from typing import List
+"""PyTorch Lightning training pipeline for tomographic boundary segmentation.
 
-import torch
+This module provides the main training interface that orchestrates data loading,
+model setup, callback configuration, and training execution using PyTorch Lightning.
+"""
+import os
+from typing import Any, Dict, List, Optional
+from pathlib import Path
+
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
+import torch
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+    StochasticWeightAveraging,
+    TQDMProgressBar,
+)
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor, StochasticWeightAveraging, \
-    TQDMProgressBar
 
-from . import config, constants
-from .pl_model import SegmentationModel
-from .data.dataloading import SegmentationDataModule
-from .losses import get_loss_function
-from .callbacks import DynamicTrainingManager
+from torch_tomo_slab import config, constants
+from torch_tomo_slab.callbacks import DynamicTrainingManager
+from torch_tomo_slab.data.dataloading import SegmentationDataModule
+from torch_tomo_slab.losses import get_loss_function
+from torch_tomo_slab.pl_model import SegmentationModel
 
 
 class TomoSlabTrainer:
     """
-    Encapsulates the entire training pipeline for the tomogram slab segmentation model.
-    This class handles data loading, model instantiation, and the PyTorch Lightning training process.
+    Complete training pipeline for tomographic boundary segmentation models.
+    
+    This class provides a high-level interface for training deep learning models
+    on tomographic data. It encapsulates the entire training workflow including
+    data preparation, model configuration, callback setup, and training execution
+    using PyTorch Lightning.
+    
+    The trainer supports:
+    - Configurable model architectures from segmentation-models-pytorch
+    - Multiple loss functions with automatic selection
+    - Advanced training features (SWA, dynamic management, early stopping)
+    - Multi-GPU training and mixed precision
+    - Comprehensive logging and checkpointing
+    
+    Attributes
+    ----------
+    model_arch : str
+        Architecture name (e.g., 'Unet', 'UnetPlusPlus').
+    model_encoder : str  
+        Encoder backbone name (e.g., 'resnet18', 'efficientnet-b0').
+    encoder_weights : str or None
+        Pre-trained weights ('imagenet', None).
+    encoder_depth : int
+        Encoder depth (typically 5 for ResNet).
+    decoder_channels : List[int]
+        Decoder channel configuration.
+    decoder_attention_type : str
+        Attention mechanism type ('scse', 'cbam', None).
+    classes : int
+        Number of output classes (1 for binary segmentation).
+    in_channels : int
+        Input channels (2 for normalized + variance).
+    loss_config : Dict[str, Any]
+        Loss function configuration.
+    learning_rate : float
+        Initial learning rate.
+    global_rank : int
+        Process rank for distributed training.
     """
 
     def __init__(self,
                  model_arch: str = config.MODEL_CONFIG['arch'],
                  model_encoder: str = config.MODEL_CONFIG['encoder_name'],
-                 encoder_weights: str = config.MODEL_CONFIG['encoder_weights'],
+                 encoder_weights: Optional[str] = config.MODEL_CONFIG['encoder_weights'],
                  encoder_depth: int = config.MODEL_CONFIG['encoder_depth'],
-                 decoder_channels: List = config.MODEL_CONFIG['decoder_channels'],
+                 decoder_channels: List[int] = config.MODEL_CONFIG['decoder_channels'],
                  decoder_attention_type: str = config.MODEL_CONFIG['decoder_attention_type'],
                  classes: int = config.MODEL_CONFIG['classes'],
                  in_channels: int = config.MODEL_CONFIG['in_channels'],
-                 loss_config: dict = config.LOSS_CONFIG,
-                 learning_rate: float = config.LEARNING_RATE):
+                 loss_config: Dict[str, Any] = config.LOSS_CONFIG,
+                 learning_rate: float = config.LEARNING_RATE,
+                 train_data_dir: Path = constants.TRAIN_DATA_DIR,
+                 val_data_dir: Path = constants.VAL_DATA_DIR) -> None:
         """
-        Initializes the trainer with model and loss configurations.
-        Args:
-            model_arch: The architecture of the segmentation model (e.g., 'Unet').
-            model_encoder: The encoder backbone for the model (e.g., 'resnet18').
-            loss_config: A dictionary defining the loss function and its parameters.
-            learning_rate: The initial learning rate for the optimizer.
+        Initialize the TomoSlabTrainer with model and training configurations.
+
+        Parameters
+        ----------
+        model_arch : str
+            Architecture name for the segmentation model (e.g., 'Unet', 'UnetPlusPlus').
+        model_encoder : str
+            Encoder backbone name (e.g., 'resnet18', 'resnet34', 'efficientnet-b0').
+        encoder_weights : str or None
+            Pre-trained weights for encoder ('imagenet', None).
+        encoder_depth : int
+            Depth of the encoder (typically 5 for ResNet architectures).
+        decoder_channels : List[int]
+            Number of channels in each decoder block, from deepest to shallowest.
+        decoder_attention_type : str
+            Type of attention mechanism in decoder ('scse', 'cbam', None).
+        classes : int
+            Number of output classes (1 for binary segmentation).
+        in_channels : int
+            Number of input channels (2 for normalized + variance images).
+        loss_config : Dict[str, Any]
+            Loss function configuration with 'name' and optional 'weights'.
+        learning_rate : float
+            Initial learning rate for the optimizer.
+        train_data_dir : Path
+            Directory containing training data files.
+        val_data_dir : Path
+            Directory containing validation data files.
         """
         self.model_arch = model_arch
         self.model_encoder = model_encoder
@@ -52,11 +121,26 @@ class TomoSlabTrainer:
         self.in_channels = in_channels
         self.loss_config = loss_config
         self.learning_rate = learning_rate
+        self.train_data_dir = train_data_dir
+        self.val_data_dir = val_data_dir
         self.global_rank = int(os.environ.get("GLOBAL_RANK", 0))
 
     def _setup_datamodule(self) -> SegmentationDataModule:
-        train_files = sorted(list(constants.TRAIN_DATA_DIR.glob("*.pt")))
-        val_files = sorted(list(constants.VAL_DATA_DIR.glob("*.pt")))
+        """
+        Set up the PyTorch Lightning DataModule for training and validation.
+
+        Returns
+        -------
+        SegmentationDataModule
+            Configured data module with train/val datasets.
+
+        Raises
+        ------
+        FileNotFoundError
+            If training or validation data files are not found.
+        """
+        train_files = sorted(list(self.train_data_dir.glob("*.pt")))
+        val_files = sorted(list(self.val_data_dir.glob("*.pt")))
         if not train_files or not val_files:
             raise FileNotFoundError("Training or validation data not found. Run the TrainingDataGenerator first.")
         return SegmentationDataModule(
@@ -67,6 +151,14 @@ class TomoSlabTrainer:
         )
 
     def _setup_model(self) -> SegmentationModel:
+        """
+        Create and configure the PyTorch Lightning model wrapper.
+
+        Returns
+        -------
+        SegmentationModel
+            Configured Lightning module with model, loss function, and hyperparameters.
+        """
         base_model = smp.create_model(
             arch=self.model_arch,
             encoder_name=self.model_encoder,
@@ -89,7 +181,16 @@ class TomoSlabTrainer:
             target_shape=constants.TARGET_VOLUME_SHAPE,
         )
 
-    def _setup_callbacks(self) -> list:
+    def _setup_callbacks(self) -> List[pl.Callback]:
+        """
+        Configure PyTorch Lightning callbacks for training.
+
+        Returns
+        -------
+        List[pl.Callback]
+            List of configured callbacks including checkpointing, early stopping,
+            learning rate monitoring, and optional SWA/dynamic training management.
+        """
         checkpointer = ModelCheckpoint(
             monitor=config.MONITOR_METRIC, mode="max",
             filename=f"best-{{epoch}}-{{{config.MONITOR_METRIC}:.4f}}",
@@ -118,9 +219,18 @@ class TomoSlabTrainer:
             callbacks.append(StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start))
         return callbacks
 
-    def fit(self):
+    def fit(self) -> None:
         """
-        Sets up all components and starts the training process.
+        Execute the complete training pipeline.
+
+        This method orchestrates the entire training process including:
+        - Data module setup and validation
+        - Model instantiation with loss function
+        - Callback and logger configuration
+        - PyTorch Lightning trainer setup
+        - Model training execution
+
+        The trained model checkpoints will be saved to 'lightning_logs/' directory.
         """
         if self.global_rank == 0:
             print("--- Running on main process (rank 0). Verbose output enabled. ---")
@@ -156,5 +266,5 @@ class TomoSlabTrainer:
 
         if trainer.is_global_zero:
             print("--- Training Finished ---")
-            if hasattr(trainer.checkpoint_callback, 'best_model_path'):
+            if hasattr(trainer.checkpoint_callback, 'best_model_path') and trainer.checkpoint_callback is not None:
                 print(f"Best model checkpoint saved at: {trainer.checkpoint_callback.best_model_path}")

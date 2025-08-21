@@ -1,24 +1,56 @@
-# src/torch_tomo_slab/processing.py
-import logging
+"""Data processing pipeline for tomographic training data preparation.
+
+This module handles the conversion of raw 3D tomographic volumes and boundary
+masks into standardized 2D training samples suitable for deep learning models.
+It includes data loading, preprocessing, normalization, and train/val splitting.
+"""
 import gc
+import logging
 from pathlib import Path
 from typing import List, Tuple
+
 import mrcfile
 import numpy as np
 import torch
 from tqdm import tqdm
 
-from . import config, constants
-from .utils.twoD import robust_normalization, local_variance_2d
-from .utils.threeD import resize_and_pad_3d
+from torch_tomo_slab import config, constants
+from torch_tomo_slab.utils.threeD import resize_and_pad_3d
+from torch_tomo_slab.utils.twoD import local_variance_2d, robust_normalization
 
 log = logging.getLogger(__name__)
 
 class TrainingDataGenerator:
     """
-    Generates standardized 2D training samples from 3D tomograms and their corresponding masks.
-    This class encapsulates the logic from the original `p02_data_preparation.py` script,
-    providing a reusable API for data preparation.
+    Generate standardized 2D training samples from 3D tomographic data.
+    
+    This class processes 3D tomogram volumes and their corresponding boundary masks
+    to create 2D training samples suitable for deep learning. It handles data loading,
+    preprocessing, normalization, and train/validation splitting.
+    
+    The processing pipeline includes:
+    - Loading and resizing 3D volumes to standard dimensions
+    - Extracting 2D slices along Y-axis
+    - Applying robust normalization and local variance computation
+    - Splitting data into training and validation sets
+    - Saving preprocessed samples as PyTorch tensor files
+    
+    Attributes
+    ----------
+    volume_dir : Path
+        Directory containing input tomogram volumes (.mrc files).
+    mask_dir : Path  
+        Directory containing input boundary masks (.mrc files).
+    output_train_dir : Path
+        Directory for saving training samples (.pt files).
+    output_val_dir : Path
+        Directory for saving validation samples (.pt files).
+    validation_fraction : float
+        Fraction of data reserved for validation (0.0-1.0).
+    target_shape : Tuple[int, int, int]
+        Target 3D shape for volume resizing (depth, height, width).
+    device : torch.device
+        PyTorch device for tensor operations.
     """
 
     def __init__(self,
@@ -29,14 +61,22 @@ class TrainingDataGenerator:
                  validation_fraction: float = config.VALIDATION_FRACTION,
                  target_volume_shape: Tuple[int, int, int] = constants.TARGET_VOLUME_SHAPE):
         """
-        Initializes the data generator with configuration parameters.
-        Args:
-            volume_dir: Directory containing the input tomogram volumes (.mrc files).
-            mask_dir: Directory containing the input mask volumes (.mrc files).
-            output_train_dir: Directory where training samples (.pt files) will be saved.
-            output_val_dir: Directory where validation samples (.pt files) will be saved.
-            validation_fraction: The fraction of data to be set aside for validation.
-            target_volume_shape: The universal 3D shape to which all volumes will be resized.
+        Initialize data generator with directories and processing parameters.
+        
+        Parameters
+        ----------
+        volume_dir : Path, default=constants.REFERENCE_TOMOGRAM_DIR
+            Directory containing input tomogram volumes (.mrc files).
+        mask_dir : Path, default=constants.MASK_OUTPUT_DIR
+            Directory containing corresponding boundary masks (.mrc files).
+        output_train_dir : Path, default=constants.TRAIN_DATA_DIR
+            Output directory for training samples (.pt files).
+        output_val_dir : Path, default=constants.VAL_DATA_DIR
+            Output directory for validation samples (.pt files).
+        validation_fraction : float, default=config.VALIDATION_FRACTION
+            Fraction of data to reserve for validation (0.0-1.0).
+        target_volume_shape : Tuple[int, int, int], default=constants.TARGET_VOLUME_SHAPE
+            Target 3D shape for volume standardization (depth, height, width).
         """
         self.volume_dir = volume_dir
         self.mask_dir = mask_dir
@@ -47,6 +87,14 @@ class TrainingDataGenerator:
         self.device = self._get_device()
 
     def _get_device(self) -> torch.device:
+        """
+        Get optimal PyTorch device for tensor operations.
+        
+        Returns
+        -------
+        torch.device
+            CUDA device if available, otherwise CPU device.
+        """
         if torch.cuda.is_available():
             log.info("CUDA is available. Using GPU.")
             return torch.device("cuda")
@@ -54,6 +102,18 @@ class TrainingDataGenerator:
         return torch.device("cpu")
 
     def _find_data_pairs(self) -> List[Tuple[Path, Path]]:
+        """
+        Find matching volume-mask pairs based on filename stems.
+        
+        Returns
+        -------
+        List[Tuple[Path, Path]]
+            List of (volume_path, mask_path) pairs for matched files.
+            
+        Warnings
+        --------
+        Logs warning for volumes without matching masks.
+        """
         pairs = []
         label_files_map = {f.stem: f for f in self.mask_dir.glob("*.mrc")}
         for vol_path in sorted(list(self.volume_dir.glob("*.mrc"))):
@@ -63,10 +123,24 @@ class TrainingDataGenerator:
                 log.warning(f"No matching label for {vol_path.name}")
         return pairs
 
-    def run(self):
+    def run(self) -> None:
         """
-        Executes the data preparation pipeline: finds data pairs, splits them, processes each volume,
-        and saves the resulting 2D slices to disk.
+        Execute complete data preparation pipeline.
+        
+        This method orchestrates the full processing workflow:
+        1. Create output directories if they don't exist
+        2. Find and match volume-mask pairs
+        3. Split data into training and validation sets
+        4. Process each 3D volume to extract 2D training samples
+        5. Save preprocessed samples as PyTorch tensor files
+        
+        The number of 2D slices extracted per volume is controlled by
+        constants.NUM_SECTIONS_PER_VOLUME.
+        
+        Raises
+        ------
+        FileNotFoundError
+            If no matching tomogram/mask pairs are found in input directories.
         """
         self.output_train_dir.mkdir(parents=True, exist_ok=True)
         self.output_val_dir.mkdir(parents=True, exist_ok=True)

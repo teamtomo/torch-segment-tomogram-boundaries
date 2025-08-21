@@ -1,4 +1,15 @@
-"""A simple Unet application to detect boundaries of tomographic volumes"""
+"""PyTorch Lightning application for tomographic boundary segmentation.
+
+This package provides a complete pipeline for training and applying deep learning
+models to detect slab boundaries in 3D tomographic volumes. It includes data
+processing, model training, and inference capabilities built on PyTorch Lightning
+and segmentation-models-pytorch.
+
+Main Components:
+- TrainingDataGenerator: Converts 3D volumes to 2D training data
+- TomoSlabTrainer: Handles model training with PyTorch Lightning
+- TomoSlabPredictor: Performs inference and generates boundary masks
+"""
 
 from importlib.metadata import PackageNotFoundError, version
 
