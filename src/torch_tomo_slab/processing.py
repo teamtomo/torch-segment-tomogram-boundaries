@@ -54,20 +54,20 @@ class TrainingDataGenerator:
     """
 
     def __init__(self,
-                 volume_dir: Path = constants.REFERENCE_TOMOGRAM_DIR,
-                 mask_dir: Path = constants.MASK_OUTPUT_DIR,
-                 output_train_dir: Path = constants.TRAIN_DATA_DIR,
-                 output_val_dir: Path = constants.VAL_DATA_DIR,
-                 validation_fraction: float = config.VALIDATION_FRACTION,
+                 volume_dir: Path = config.TOMOGRAM_DIR,
+                 mask_dir: Path = config.MASKS_DIR,
+                 output_train_dir: Path = config.TRAIN_DATA_DIR,
+                 output_val_dir: Path = config.VAL_DATA_DIR,
+                 validation_fraction: float = constants.VALIDATION_FRACTION,
                  target_volume_shape: Tuple[int, int, int] = constants.TARGET_VOLUME_SHAPE):
         """
         Initialize data generator with directories and processing parameters.
         
         Parameters
         ----------
-        volume_dir : Path, default=constants.REFERENCE_TOMOGRAM_DIR
+        volume_dir : Path, default=constants.TOMOGRAM_DIR
             Directory containing input tomogram volumes (.mrc files).
-        mask_dir : Path, default=constants.MASK_OUTPUT_DIR
+        mask_dir : Path, default=constants.MASKS_DIR
             Directory containing corresponding boundary masks (.mrc files).
         output_train_dir : Path, default=constants.TRAIN_DATA_DIR
             Output directory for training samples (.pt files).
@@ -170,7 +170,7 @@ class TrainingDataGenerator:
                     label_std = resize_and_pad_3d(label, self.target_shape, mode='label').to(self.device)
 
                     for i in range(constants.NUM_SECTIONS_PER_VOLUME):
-                        margin = 7
+                        margin = np.random.randint(2,7)
                         axis_to_slice = torch.randint(1, 3, (1,)).item()
                         D, H, W = volume_std.shape
                         if axis_to_slice == 1:  # Slice along Y-axis

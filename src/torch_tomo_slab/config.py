@@ -4,20 +4,26 @@ This module centralizes all configuration parameters including model architectur
 training hyperparameters, data paths, loss functions, and augmentation settings.
 All parameters can be overridden programmatically for experiments.
 """
+import os
+import torch
 from pathlib import Path
 
-import torch
-
 # --- DATA ---
-import os
 BASE_DATA_PATH = Path(os.environ.get("TORCH_TOMO_SLAB_DATA", "data/"))
 
+# Input data directories for script 01 and 02
+TOMOGRAM_DIR: Path = BASE_DATA_PATH / "data_in" / "volumes"
+
+# Output data directories from scripts
+MASKS_DIR: Path = BASE_DATA_PATH / "data_in" / "boundary_mask_voumes"
+PREPARED_DATA_BASE_DIR: Path = BASE_DATA_PATH / "prepared_data"
+TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
+VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
 LEARNING_RATE: float = 1e-4
 MAX_EPOCHS: int = 50
 PRECISION: str = 'bf16-mixed'
-VALIDATION_FRACTION: float = 0.2
 
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
@@ -38,23 +44,12 @@ MODEL_CONFIG: dict[str, any] = {
 LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
-    'params': {}             # Simplified: No longer need focal/tversky params
+    'params': {}
 }
 
 # --- DATALOADER & AUGMENTATION ---
 BATCH_SIZE: int = 64
 NUM_WORKERS: int = 8
-
-# --- AUGMENTATION PARAMETERS (NEW) ---
-AUGMENTATION_CONFIG: dict[str, any] = {
-    'CROP_SIZE': 64,
-    'PAD_SIZE': 1024,
-    'ROTATE_LIMIT': 90,
-    'BRIGHTNESS_CONTRAST_LIMIT': 0.2,
-    'GAUSS_NOISE_STD_RANGE': (0.0, 0.05),
-    'GAUSS_BLUR_LIMIT': (3, 7),
-    'LOCAL_VARIANCE_KERNEL_SIZE': 5
-}
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
@@ -70,22 +65,10 @@ STANDARD_SWA_START_FRACTION: float = 0.75
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
 DEVICES: int = torch.cuda.device_count() if torch.cuda.is_available() else 1
-MONITOR_METRIC: str = "val_dice"
-LOG_EVERY_N_STEPS: int = 10
-CHECK_VAL_EVERY_N_EPOCH: int = 1
-
-# --- LR SCHEDULER ---
-USE_LR_SCHEDULER: bool = True
-SCHEDULER_MONITOR: str = "val_dice"
-SCHEDULER_PATIENCE: int = 3
-SCHEDULER_FACTOR: float = 0.1
-SCHEDULER_MIN_LR: float = 1e-8
-
-# --- STOCHASTIC WEIGHT AVERAGING (SWA) ---
-USE_SWA: bool = True
 SWA_LEARNING_RATE: float = 0.1 * LEARNING_RATE # 10% of the main LR is a good starting point
 
 # --- CHECKPOINTING ---
+CKPT_SAVE_PATH: Path = BASE_DATA_PATH/"checkpoints"
 CHECKPOINT_SAVE_TOP_K: int = 1
 
 # --- OPTIMIZER ---
@@ -97,6 +80,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
 }
 
 # --- SCHEDULER ---
+USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "ReduceLROnPlateau",
     "params": {

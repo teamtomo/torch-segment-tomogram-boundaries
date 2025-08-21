@@ -79,8 +79,8 @@ class TomoSlabTrainer:
                  in_channels: int = config.MODEL_CONFIG['in_channels'],
                  loss_config: Dict[str, Any] = config.LOSS_CONFIG,
                  learning_rate: float = config.LEARNING_RATE,
-                 train_data_dir: Path = constants.TRAIN_DATA_DIR,
-                 val_data_dir: Path = constants.VAL_DATA_DIR) -> None:
+                 train_data_dir: Path = config.TRAIN_DATA_DIR,
+                 val_data_dir: Path = config.VAL_DATA_DIR) -> None:
         """
         Initialize the TomoSlabTrainer with model and training configurations.
 
@@ -192,8 +192,8 @@ class TomoSlabTrainer:
             learning rate monitoring, and optional SWA/dynamic training management.
         """
         checkpointer = ModelCheckpoint(
-            monitor=config.MONITOR_METRIC, mode="max",
-            filename=f"best-{{epoch}}-{{{config.MONITOR_METRIC}:.4f}}",
+            monitor=constants.MONITOR_METRIC, mode="max",
+            filename=f"best-{{epoch}}-{{{constants.MONITOR_METRIC}:.4f}}",
             save_top_k=config.CHECKPOINT_SAVE_TOP_K, verbose=(self.global_rank == 0),
         )
         lr_monitor = LearningRateMonitor(logging_interval="step")
@@ -203,17 +203,17 @@ class TomoSlabTrainer:
         if config.USE_DYNAMIC_MANAGER:
             if self.global_rank == 0: print("Using DynamicTrainingManager for adaptive SWA and Early Stopping.")
             callbacks.append(DynamicTrainingManager(
-                monitor=config.MONITOR_METRIC, mode="max", ema_alpha=config.EMA_ALPHA,
+                monitor=constants.MONITOR_METRIC, mode="max", ema_alpha=config.EMA_ALPHA,
                 trigger_swa_patience=config.SWA_TRIGGER_PATIENCE,
                 early_stop_patience=config.EARLY_STOP_PATIENCE, min_delta=config.EARLY_STOP_MIN_DELTA
             ))
         else:
             if self.global_rank == 0: print("Using standard EarlyStopping callback.")
             callbacks.append(EarlyStopping(
-                monitor=config.MONITOR_METRIC, mode="max", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
+                monitor=constants.MONITOR_METRIC, mode="max", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
                 min_delta=config.EARLY_STOP_MIN_DELTA, verbose=(self.global_rank == 0),
             ))
-        if config.USE_SWA:
+        if constants.USE_SWA:
             if self.global_rank == 0: print("Stochastic Weight Averaging (SWA) is enabled.")
             swa_start = config.MAX_EPOCHS + 1 if config.USE_DYNAMIC_MANAGER else config.STANDARD_SWA_START_FRACTION
             callbacks.append(StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start))
@@ -243,7 +243,7 @@ class TomoSlabTrainer:
         experiment_name = f"{self.model_arch}-{self.model_encoder}"
         experiment_details = f"loss-{self.loss_config['name'].replace('+', '_')}"
         logger = TensorBoardLogger(
-            save_dir="lightning_logs",
+            save_dir=config.CKPT_SAVE_PATH,
             name=f"{experiment_name}/{experiment_details}"
         )
 
@@ -251,11 +251,13 @@ class TomoSlabTrainer:
 
         trainer = pl.Trainer(
             max_epochs=config.MAX_EPOCHS, accelerator=config.ACCELERATOR, devices=config.DEVICES,
-            precision=config.PRECISION, log_every_n_steps=config.LOG_EVERY_N_STEPS,
-            check_val_every_n_epoch=config.CHECK_VAL_EVERY_N_EPOCH,
+            precision=config.PRECISION, log_every_n_steps=constants.LOG_EVERY_N_STEPS,
+            check_val_every_n_epoch=constants.CHECK_VAL_EVERY_N_EPOCH,
             logger=logger,
             callbacks=callbacks,
-            strategy='ddp_find_unused_parameters_true'
+            strategy="ddp_find_unused_parameters_false" if torch.cuda.is_available() else "auto",
+            gradient_clip_val=1.0,
+            gradient_clip_algorithm="norm"
         )
 
         if self.global_rank == 0:

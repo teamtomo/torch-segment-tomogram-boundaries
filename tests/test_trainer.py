@@ -16,10 +16,7 @@ def test_trainer_initialization():
 
 def test_setup_datamodule(dummy_pt_files):
     """Test the datamodule setup."""
-    trainer = TomoSlabTrainer(
-        train_data_dir=dummy_pt_files["train_dir"],
-        val_data_dir=dummy_pt_files["val_dir"]
-    )
+    trainer = TomoSlabTrainer(train_data_dir=dummy_pt_files["train_dir"], val_data_dir=dummy_pt_files["val_dir"])
     datamodule = trainer._setup_datamodule()
     datamodule.setup()
     assert len(datamodule.train_dataset) == 1
@@ -49,10 +46,7 @@ def test_trainer_fit_fast_dev_run(dummy_pt_files, mocker):
     # Mock the pl.Trainer to use fast_dev_run
     mock_pl_trainer = mocker.patch('pytorch_lightning.Trainer')
 
-    trainer_api = TomoSlabTrainer(
-        train_data_dir=dummy_pt_files["train_dir"],
-        val_data_dir=dummy_pt_files["val_dir"]
-    )
+    trainer_api = TomoSlabTrainer(train_data_dir=dummy_pt_files["train_dir"], val_data_dir=dummy_pt_files["val_dir"])
     trainer_api.fit()  # Run the main method
 
     # Assert that pl.Trainer was called with fast_dev_run implicitly

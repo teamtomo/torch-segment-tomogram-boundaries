@@ -78,10 +78,8 @@ def trained_checkpoint(dummy_pt_files, tmp_path_factory):
         constants.TRAIN_DATA_DIR = dummy_pt_files["train_dir"]
         constants.VAL_DATA_DIR = dummy_pt_files["val_dir"]
 
-        trainer_api = TomoSlabTrainer(
-            train_data_dir=dummy_pt_files["train_dir"],
-            val_data_dir=dummy_pt_files["val_dir"]
-        )
+        trainer_api = TomoSlabTrainer(train_data_dir=dummy_pt_files["train_dir"],
+                                      val_data_dir=dummy_pt_files["val_dir"])
 
         # Use Lightning's fast_dev_run to run one training and validation batch
         pl_trainer = pl.Trainer(

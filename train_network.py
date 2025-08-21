@@ -19,32 +19,31 @@ from torch_tomo_slab.processing import TrainingDataGenerator
 from torch_tomo_slab.trainer import TomoSlabTrainer
 
 
-def main():
+def train_and_prep(tomo_dir,
+            mask_vol_dir,
+            prepared_data_out_dir):
+
     """Run the complete training pipeline."""
     print("=== Torch-Tomo-Slab Training Pipeline ===")
-    
+    print("=== Prepare training inputs ===")
+    config.TOMOGRAM_DIR = tomo_dir
+    config.MASKS_DIR = mask_vol_dir
+    config.PREPARED_DATA_BASE_DIR = prepared_data_out_dir
+
     # Display current configuration
     print(f"\nData Configuration:")
-    print(f"  Tomograms directory: {constants.REFERENCE_TOMOGRAM_DIR}")
-    print(f"  Masks directory: {constants.MASK_OUTPUT_DIR}")
-    print(f"  Training data will be saved to: {constants.TRAIN_DATA_DIR}")
-    print(f"  Validation data will be saved to: {constants.VAL_DATA_DIR}")
-    
-    print(f"\nTraining Configuration:")
-    print(f"  Model: {config.MODEL_CONFIG['arch']} with {config.MODEL_CONFIG['encoder_name']} encoder")
-    print(f"  Learning rate: {config.LEARNING_RATE}")
-    print(f"  Batch size: {config.BATCH_SIZE}")
-    print(f"  Max epochs: {config.MAX_EPOCHS}")
-    print(f"  Loss function: {config.LOSS_CONFIG['name']}")
+    print(f"  Tomograms directory: {config.TOMOGRAM_DIR}")
+    print(f"  Masks directory: {config.MASKS_DIR}")
+    print(f"  Train/Val data will be saved to: {config.PREPARED_DATA_BASE_DIR}")
     
     # Check if input directories exist
-    if not constants.REFERENCE_TOMOGRAM_DIR.exists():
-        print(f"\nWarning: Tomogram directory {constants.REFERENCE_TOMOGRAM_DIR} does not exist!")
+    if not config.TOMOGRAM_DIR.exists():
+        print(f"\nWarning: Tomogram directory {config.TOMOGRAM_DIR} does not exist!")
         print("Please create this directory and place your .mrc tomogram files there.")
         return
     
-    if not constants.MASK_OUTPUT_DIR.exists():
-        print(f"\nWarning: Mask directory {constants.MASK_OUTPUT_DIR} does not exist!")
+    if not config.MASKS_DIR.exists():
+        print(f"\nWarning: Mask directory {config.MASKS_DIR} does not exist!")
         print("Please create this directory and place your .mrc mask files there.")
         return
     
@@ -69,55 +68,8 @@ def main():
     print("Look for the best checkpoint (highest validation dice score) to use for inference.")
 
 
-def train_with_custom_config(learning_rate=1e-4, 
-                           batch_size=64, 
-                           encoder='resnet18',
-                           max_epochs=50,
-                           loss_function='weighted_bce'):
-    """
-    Train with custom hyperparameters.
-    
-    This function demonstrates how to override default configurations
-    for experimental purposes.
-    
-    Parameters
-    ----------
-    learning_rate : float, default=1e-4
-        Learning rate for optimization.
-    batch_size : int, default=64
-        Training batch size.
-    encoder : str, default='resnet18'
-        Encoder backbone for the U-Net model.
-    max_epochs : int, default=50
-        Maximum number of training epochs.
-    loss_function : str, default='weighted_bce'
-        Loss function to use ('dice', 'bce', 'weighted_bce', etc.).
-    """
-    print("=== Custom Training Configuration ===")
-    
-    # Override configuration parameters
-    config.LEARNING_RATE = learning_rate
-    config.BATCH_SIZE = batch_size
-    config.MAX_EPOCHS = max_epochs
-    config.MODEL_CONFIG['encoder_name'] = encoder
-    config.LOSS_CONFIG['name'] = loss_function
-    
-    print(f"Custom learning rate: {config.LEARNING_RATE}")
-    print(f"Custom batch size: {config.BATCH_SIZE}")
-    print(f"Custom encoder: {config.MODEL_CONFIG['encoder_name']}")
-    print(f"Custom max epochs: {config.MAX_EPOCHS}")
-    print(f"Custom loss function: {config.LOSS_CONFIG['name']}")
-    
-    # Run training with custom configuration
-    trainer = TomoSlabTrainer()
-    trainer.fit()
-    
-    print("✓ Custom training complete!")
-
-
 if __name__ == "__main__":
-    # Run the standard training pipeline
-    main()
-    
-    # Uncomment the line below to run with custom parameters instead:
-    # train_with_custom_config(learning_rate=1e-5, batch_size=32, encoder='resnet50')
+    tomo_dir = "blah"
+    mask_vol_dir = "blah"
+    prepared_data_out_dir = "blah"
+    train_and_prep(tomo_dir, mask_vol_dir, prepared_data_out_dir)
