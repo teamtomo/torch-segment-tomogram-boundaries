@@ -3,9 +3,8 @@ from typing import Any, Dict
 import albumentations as A
 import numpy as np
 
-from torch_tomo_slab import constants, config
+from torch_tomo_slab import constants
 from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
-from torch_tomo_slab.data.sampling import calculate_boundary_score
 
 
 class AddBoundaryWeightMap(A.core.transforms_interface.ImageOnlyTransform):

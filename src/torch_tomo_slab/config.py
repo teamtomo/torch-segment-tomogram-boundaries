@@ -51,10 +51,8 @@ LOSS_CONFIG: dict[str, any] = {
 BATCH_SIZE: int = 64
 NUM_WORKERS: int = 8
 
-# --- BALANCED SAMPLING ---
-USE_BOUNDARY_AWARE_SAMPLING: bool = False    # Enable intelligent sampling that oversamples boundary-rich images  
+# --- BALANCED CROPPING ---
 USE_BALANCED_CROP: bool = False              # Enable balanced cropping that avoids pure 0 or 1 patches
-BOUNDARY_SAMPLING_WEIGHT: float = 3.0        # Weight multiplier for boundary-rich samples
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
