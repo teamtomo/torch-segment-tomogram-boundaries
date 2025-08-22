@@ -75,7 +75,8 @@ CHECKPOINT_SAVE_TOP_K: int = 1
 OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
-        "lr": LEARNING_RATE
+        "lr": LEARNING_RATE,
+        "weight_decay": 1e-8
     }
 }
 
