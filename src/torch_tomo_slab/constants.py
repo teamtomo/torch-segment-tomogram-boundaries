@@ -31,5 +31,8 @@ AUGMENTATION_CONFIG: dict[str, any] = {
     'BRIGHTNESS_CONTRAST_LIMIT': 0.2,
     'GAUSS_NOISE_STD_RANGE': (0.0, 0.05),
     'GAUSS_BLUR_LIMIT': (3, 7),
-    'LOCAL_VARIANCE_KERNEL_SIZE': 5
+    'LOCAL_VARIANCE_KERNEL_SIZE': 5,
+    # Balanced crop parameters (simple fill ratio filtering)
+    'MIN_FILL_RATIO': 0.1,              # Minimum percentage of 1s in patch (10% = avoid pure empty)
+    'MAX_FILL_RATIO': 0.9,              # Maximum percentage of 1s in patch (90% = avoid pure filled)
 }

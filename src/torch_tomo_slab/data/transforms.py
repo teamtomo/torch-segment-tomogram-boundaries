@@ -1,9 +1,11 @@
 from typing import Any, Dict
 
 import albumentations as A
+import numpy as np
 
 from torch_tomo_slab import constants, config
 from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
+from torch_tomo_slab.data.sampling import calculate_boundary_score
 
 
 class AddBoundaryWeightMap(A.core.transforms_interface.ImageOnlyTransform):
@@ -16,7 +18,83 @@ class AddBoundaryWeightMap(A.core.transforms_interface.ImageOnlyTransform):
     def apply(self, img, **params) -> Dict[str, Any]:
         return generate_boundary_weight_map(img, self.high_weight, self.base_weight)
 
-def get_transforms(is_training: bool = True) -> A.Compose:
+
+class BalancedCrop(A.DualTransform):
+    """
+    Simple crop that avoids pure empty (0) or pure filled (1) patches.
+    
+    This transform ensures patches have a minimum percentage of both 0s and 1s,
+    preventing the network from training on completely empty or completely filled patches.
+    
+    Parameters
+    ----------
+    height : int
+        Height of the crop
+    width : int
+        Width of the crop  
+    min_fill_ratio : float
+        Minimum percentage of 1s required (0.1 = 10%)
+    max_fill_ratio : float  
+        Maximum percentage of 1s allowed (0.9 = 90%)
+    max_attempts : int
+        Maximum attempts to find a balanced crop before falling back to random
+    """
+    
+    def __init__(self, height: int, width: int, min_fill_ratio: float = 0.1, 
+                 max_fill_ratio: float = 0.9, max_attempts: int = 50, always_apply=False, p=1.0):
+        super().__init__(always_apply, p)
+        self.height = height
+        self.width = width
+        self.min_fill_ratio = min_fill_ratio
+        self.max_fill_ratio = max_fill_ratio
+        self.max_attempts = max_attempts
+    
+    def apply(self, img, crop_coords, **params):
+        """Apply crop to image."""
+        x1, y1, x2, y2 = crop_coords
+        return img[y1:y2, x1:x2]
+    
+    def apply_to_mask(self, mask, crop_coords, **params):
+        """Apply crop to mask."""
+        x1, y1, x2, y2 = crop_coords
+        return mask[y1:y2, x1:x2]
+    
+    def get_params_dependent_on_targets(self, params):
+        """
+        Generate crop coordinates that avoid pure 0 or pure 1 patches.
+        """
+        mask = params['mask']
+        h, w = mask.shape[:2]
+        
+        # Try to find a balanced crop
+        for attempt in range(self.max_attempts):
+            # Random crop location
+            x1 = np.random.randint(0, max(1, w - self.width))
+            y1 = np.random.randint(0, max(1, h - self.height))
+            x2 = min(w, x1 + self.width)
+            y2 = min(h, y1 + self.height)
+            
+            # Check fill ratio of this crop
+            crop_mask = mask[y1:y2, x1:x2]
+            fill_ratio = crop_mask.mean() if crop_mask.size > 0 else 0.0
+            
+            # Accept if within desired range
+            if self.min_fill_ratio <= fill_ratio <= self.max_fill_ratio:
+                return {'crop_coords': (x1, y1, x2, y2)}
+        
+        # Fall back to random crop if no balanced crop found
+        x1 = np.random.randint(0, max(1, w - self.width))
+        y1 = np.random.randint(0, max(1, h - self.height))
+        x2 = min(w, x1 + self.width)
+        y2 = min(h, y1 + self.height)
+        
+        return {'crop_coords': (x1, y1, x2, y2)}
+    
+    @property
+    def targets_as_params(self):
+        return ["image", "mask"]
+
+def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
     if is_training:
         transform_list = [
             A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, fill=0, fill_mask=0, p=1.0),
@@ -27,11 +105,26 @@ def get_transforms(is_training: bool = True) -> A.Compose:
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
             A.GaussNoise(std_range=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.3),
             A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.3),
-#            A.ElasticTransform(p=0.3, alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03),
             A.GridDistortion(p=0.3),
             A.CoarseDropout(p=0.3, num_holes_range=(1,8), hole_height_range=(0.1,0.2), hole_width_range=(0.1,0.2), fill=0),
-            A.RandomCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0),
         ]
+        
+        # Add balanced crop or regular random crop
+        if use_balanced_crop:
+            transform_list.append(
+                BalancedCrop(
+                    height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], 
+                    width=constants.AUGMENTATION_CONFIG['CROP_SIZE'],
+                    min_fill_ratio=constants.AUGMENTATION_CONFIG.get('MIN_FILL_RATIO', 0.1),
+                    max_fill_ratio=constants.AUGMENTATION_CONFIG.get('MAX_FILL_RATIO', 0.9),
+                    max_attempts=200,
+                    p=1.0
+                )
+            )
+        else:
+            transform_list.append(
+                A.RandomCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
+            )
     else:
         transform_list = [
             A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0),
