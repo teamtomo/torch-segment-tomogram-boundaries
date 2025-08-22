@@ -23,18 +23,21 @@ def train_and_prep(tomo_dir:Union[str,os.PathLike],
                    mask_vol_dir:Union[str,os.PathLike],
                    output_train_dir:Union[str,os.PathLike],
                    output_val_dir:Union[str,os.PathLike], ckpt_save_dir:Union[str,os.PathLike]):
+    train_exists = os.path.exists(output_train_dir) and len(os.listdir(output_train_dir)) > 0
+    val_exists = os.path.exists(output_val_dir) and len(os.listdir(output_val_dir)) > 0
 
-    # Step 1: Prepare training data
-    print("\n=== Step 1: Preparing Training Data ===")
-    print("Converting 3D volumes to 2D training slices...")
-    
-    generator = TrainingDataGenerator(volume_dir=tomo_dir,
-                                      mask_dir=mask_vol_dir,
-                                      output_train_dir=output_train_dir,
-                                      output_val_dir=output_val_dir)
-    generator.run()
-    
-    print("✓ Data preparation complete.")
+    if not (train_exists and val_exists):
+        print("\n=== Step 1: Preparing Training Data ===")
+        print("Converting 3D volumes to 2D training slices...")
+
+        generator = TrainingDataGenerator(volume_dir=tomo_dir,
+                                          mask_dir=mask_vol_dir,
+                                          output_train_dir=output_train_dir,
+                                          output_val_dir=output_val_dir)
+        generator.run()
+        print("✓ Data preparation complete.")
+    else:
+        print("✓ Training data already exists, skipping preparation.")
     
     # Step 2: Train the model
     print("\n=== Step 2: Training Model ===")
