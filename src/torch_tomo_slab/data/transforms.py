@@ -109,9 +109,11 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
-            A.GaussNoise(std_range=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.3),
-            A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.3),
-            A.CoarseDropout(p=0.3, num_holes_range=(1,8), hole_height_range=(0.1,0.2), hole_width_range=(0.1,0.2), fill=0),
+            A.GaussNoise(std_range=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.4),
+            A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.4),
+            A.ElasticTransform(p=0.3, alpha=constants.AUGMENTATION_CONFIG['ELASTIC_ALPHA'], 
+                              sigma=constants.AUGMENTATION_CONFIG['ELASTIC_SIGMA']),
+            A.CoarseDropout(p=0.4, num_holes_range=(1,12), hole_height_range=(0.05,0.25), hole_width_range=(0.05,0.25), fill=0),
         ]
         
         # Add balanced crop or regular random crop

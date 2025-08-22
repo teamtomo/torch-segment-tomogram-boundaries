@@ -55,16 +55,23 @@ class WeightedBCELoss(nn.Module):
         Whether input predictions are logits (True) or probabilities (False).
     """
 
-    def __init__(self, from_logits: bool = True):
+    def __init__(self, from_logits: bool = True, label_smoothing: float = 0.0):
         super().__init__()
         self.from_logits = from_logits
+        self.label_smoothing = label_smoothing
         self.name = "WeightedBCE"
 
     def forward(self, pred_logits: torch.Tensor, target: torch.Tensor, weight_map: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if self.from_logits:
-            loss = F.binary_cross_entropy_with_logits(pred_logits, target.float(), reduction='none')
+        # Apply label smoothing if specified
+        if self.label_smoothing > 0.0:
+            target_smooth = target * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
         else:
-            loss = F.binary_cross_entropy(torch.sigmoid(pred_logits), target.float(), reduction='none')
+            target_smooth = target
+        
+        if self.from_logits:
+            loss = F.binary_cross_entropy_with_logits(pred_logits, target_smooth.float(), reduction='none')
+        else:
+            loss = F.binary_cross_entropy(torch.sigmoid(pred_logits), target_smooth.float(), reduction='none')
 
         if weight_map is not None:
             weighted_loss = loss * weight_map
@@ -154,6 +161,7 @@ def get_loss_function(loss_config: dict) -> nn.Module:
         Configuration dictionary with keys:
         - 'name': Loss function name or combination (e.g., 'dice+bce')
         - 'weights': List of weights for combined losses (if applicable)
+        - 'params': Dictionary of parameters for loss functions
     
     Returns
     -------
@@ -175,10 +183,14 @@ def get_loss_function(loss_config: dict) -> nn.Module:
     """
     name = loss_config['name'].lower()
     from_logits = True  # All our model outputs are logits
+    params = loss_config.get('params', {})
+    
+    # Extract label smoothing parameter
+    label_smoothing = params.get('label_smoothing', 0.0)
 
     loss_lib = {
         'bce': nn.BCEWithLogitsLoss(),
-        'weighted_bce': WeightedBCELoss(from_logits=from_logits),
+        'weighted_bce': WeightedBCELoss(from_logits=from_logits, label_smoothing=label_smoothing),
         'boundary': BoundaryLoss(from_logits=from_logits),
         'dice': SMPLossWrapper(smp.losses.DiceLoss(mode='binary'), from_logits=from_logits),
     }

@@ -44,7 +44,9 @@ MODEL_CONFIG: dict[str, any] = {
 LOSS_CONFIG: dict[str, any] = {
     'name': 'dice+weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.6, 0.4],     # Only used for combined losses like 'dice+bce'
-    'params': {}
+    'params': {
+        'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
+    }
 }
 
 # --- DATALOADER & AUGMENTATION ---
@@ -79,7 +81,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-8
+        "weight_decay": 1e-4  # Increase from 1e-8 to add regularization
     }
 }
 
