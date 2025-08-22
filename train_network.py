@@ -41,7 +41,8 @@ def train_and_prep(tomo_dir:Union[str,os.PathLike],
     print("Starting training process...")
     
     trainer = TomoSlabTrainer(train_data_dir=output_train_dir,
-                              val_data_dir=output_val_dir)
+                              val_data_dir=output_val_dir,
+                              )
     trainer.fit()
     
     print("✓ Training complete!")

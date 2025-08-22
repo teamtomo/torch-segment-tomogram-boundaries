@@ -80,7 +80,8 @@ class TomoSlabTrainer:
                  loss_config: Dict[str, Any] = config.LOSS_CONFIG,
                  learning_rate: float = config.LEARNING_RATE,
                  train_data_dir: Path = config.TRAIN_DATA_DIR,
-                 val_data_dir: Path = config.VAL_DATA_DIR) -> None:
+                 val_data_dir: Path = config.VAL_DATA_DIR,
+                 ckpt_save_dir: Path = config.CKPT_SAVE_PATH) -> None:
         """
         Initialize the TomoSlabTrainer with model and training configurations.
 
@@ -123,6 +124,7 @@ class TomoSlabTrainer:
         self.learning_rate = learning_rate
         self.train_data_dir = Path(train_data_dir)
         self.val_data_dir = Path(val_data_dir)
+        self.ckpt_save_dir = Path(ckpt_save_dir)
         self.global_rank = int(os.environ.get("GLOBAL_RANK", 0))
 
     def _setup_datamodule(self) -> SegmentationDataModule:
@@ -243,7 +245,7 @@ class TomoSlabTrainer:
         experiment_name = f"{self.model_arch}-{self.model_encoder}"
         experiment_details = f"loss-{self.loss_config['name'].replace('+', '_')}"
         logger = TensorBoardLogger(
-            save_dir=config.CKPT_SAVE_PATH,
+            save_dir=self.ckpt_save_dir,
             name=f"{experiment_name}/{experiment_details}"
         )
 
@@ -255,7 +257,7 @@ class TomoSlabTrainer:
             check_val_every_n_epoch=constants.CHECK_VAL_EVERY_N_EPOCH,
             logger=logger,
             callbacks=callbacks,
-            strategy="ddp_find_unused_parameters_false" if torch.cuda.is_available() else "auto",
+            strategy="ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
             gradient_clip_val=1.0,
             gradient_clip_algorithm="norm"
         )
