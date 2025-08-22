@@ -51,11 +51,11 @@ def train_and_prep(tomo_dir:Union[str,os.PathLike],
 
 
 if __name__ == "__main__":
-    tomo_dir = "blah"
-    mask_vol_dir = "blah"
-    output_train_dir ="blah"
-    output_val_dir = "blah"
+    tomo_dir = "/home/pranav/data/training/torch-tomo-slab/data_in/volumes"
+    mask_vol_dir = "/home/pranav/data/training/torch-tomo-slab/data_in/boundary_mask_voumes"
+    output_train_dir = "/home/pranav/data/training/torch-tomo-slab/prepared_data/train"
+    output_val_dir = "/home/pranav/data/training/torch-tomo-slab/prepared_data/val"
     train_and_prep(tomo_dir=tomo_dir,
-                   mask_vol_dir=mask_vol_dir,
-                   output_train_dir=output_train_dir,
-                   output_val_dir=output_val_dir)
+                   mask_vol_dir = mask_vol_dir,
+                   output_train_dir = output_train_dir,
+                   output_val_dir = output_val_dir)
