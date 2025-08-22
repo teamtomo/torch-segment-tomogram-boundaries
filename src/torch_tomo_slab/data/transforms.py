@@ -111,7 +111,6 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
             A.GaussNoise(std_range=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.3),
             A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.3),
-            A.GridDistortion(p=0.3),
             A.CoarseDropout(p=0.3, num_holes_range=(1,8), hole_height_range=(0.1,0.2), hole_width_range=(0.1,0.2), fill=0),
         ]
         

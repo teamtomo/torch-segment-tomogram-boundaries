@@ -42,8 +42,8 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
-    'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
+    'name': 'dice+weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'weights': [0.6, 0.4],     # Only used for combined losses like 'dice+bce'
     'params': {}
 }
 
@@ -56,7 +56,7 @@ USE_BALANCED_CROP: bool = False              # Enable balanced cropping that avo
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
-EMA_ALPHA: float = 0.3                # Smoothing factor for validation metric (higher means more responsive)
+EMA_ALPHA: float = 0.15                # Smoothing factor for validation metric (higher means more responsive)
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 8       # Epochs of no improvement (after SWA) before stopping
 EARLY_STOP_MIN_DELTA: float = 0.005   # Minimum change to be considered an improvement
