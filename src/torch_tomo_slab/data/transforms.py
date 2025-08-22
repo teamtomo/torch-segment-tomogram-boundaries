@@ -65,27 +65,34 @@ class BalancedCrop(A.DualTransform):
         mask = params['mask']
         h, w = mask.shape[:2]
         
-        # Try to find a balanced crop
+        # Ensure we can make a crop
+        if w < self.width or h < self.height:
+            return {'crop_coords': (0, 0, min(w, self.width), min(h, self.height))}
+        
+        max_x = w - self.width
+        max_y = h - self.height
+        
+        # Try to find a balanced crop (reduced attempts to prevent OOM)
         for attempt in range(self.max_attempts):
             # Random crop location
-            x1 = np.random.randint(0, max(1, w - self.width))
-            y1 = np.random.randint(0, max(1, h - self.height))
-            x2 = min(w, x1 + self.width)
-            y2 = min(h, y1 + self.height)
+            x1 = np.random.randint(0, max_x + 1)
+            y1 = np.random.randint(0, max_y + 1)
+            x2 = x1 + self.width
+            y2 = y1 + self.height
             
-            # Check fill ratio of this crop
+            # Check fill ratio of this crop (more efficient calculation)
             crop_mask = mask[y1:y2, x1:x2]
-            fill_ratio = crop_mask.mean() if crop_mask.size > 0 else 0.0
+            fill_ratio = np.mean(crop_mask, dtype=np.float32)
             
             # Accept if within desired range
             if self.min_fill_ratio <= fill_ratio <= self.max_fill_ratio:
                 return {'crop_coords': (x1, y1, x2, y2)}
         
         # Fall back to random crop if no balanced crop found
-        x1 = np.random.randint(0, max(1, w - self.width))
-        y1 = np.random.randint(0, max(1, h - self.height))
-        x2 = min(w, x1 + self.width)
-        y2 = min(h, y1 + self.height)
+        x1 = np.random.randint(0, max_x + 1)
+        y1 = np.random.randint(0, max_y + 1)
+        x2 = x1 + self.width
+        y2 = y1 + self.height
         
         return {'crop_coords': (x1, y1, x2, y2)}
     
@@ -116,7 +123,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                     width=constants.AUGMENTATION_CONFIG['CROP_SIZE'],
                     min_fill_ratio=constants.AUGMENTATION_CONFIG.get('MIN_FILL_RATIO', 0.1),
                     max_fill_ratio=constants.AUGMENTATION_CONFIG.get('MAX_FILL_RATIO', 0.9),
-                    max_attempts=200,
+                    max_attempts=constants.AUGMENTATION_CONFIG.get('MAX_CROP_ATTEMPTS', 10),
                     p=1.0
                 )
             )

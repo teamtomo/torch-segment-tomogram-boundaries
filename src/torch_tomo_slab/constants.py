@@ -25,14 +25,15 @@ USE_SWA: bool = True
 
 # --- AUGMENTATION PARAMETERS (NEW) ---
 AUGMENTATION_CONFIG: dict[str, any] = {
-    'CROP_SIZE': 64,
-    'PAD_SIZE': 1024,
+    'CROP_SIZE': 256,                   # Square training patches from 256x512 orthogonal views
+    'PAD_SIZE': 512,                    # Pad shorter dimension (256) to match longer (512) for square crops
     'ROTATE_LIMIT': 90,
     'BRIGHTNESS_CONTRAST_LIMIT': 0.2,
     'GAUSS_NOISE_STD_RANGE': (0.0, 0.05),
     'GAUSS_BLUR_LIMIT': (3, 7),
     'LOCAL_VARIANCE_KERNEL_SIZE': 5,
     # Balanced crop parameters (simple fill ratio filtering)
-    'MIN_FILL_RATIO': 0.1,              # Minimum percentage of 1s in patch (10% = avoid pure empty)
-    'MAX_FILL_RATIO': 0.9,              # Maximum percentage of 1s in patch (90% = avoid pure filled)
+    'MIN_FILL_RATIO': 0.05,             # Minimum percentage of 1s in patch (5% = avoid pure empty)
+    'MAX_FILL_RATIO': 0.95,             # Maximum percentage of 1s in patch (95% = avoid pure filled)
+    'MAX_CROP_ATTEMPTS': 10,            # Maximum attempts to find balanced crop before fallback
 }
