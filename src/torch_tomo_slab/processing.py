@@ -78,10 +78,10 @@ class TrainingDataGenerator:
         target_volume_shape : Tuple[int, int, int], default=constants.TARGET_VOLUME_SHAPE
             Target 3D shape for volume standardization (depth, height, width).
         """
-        self.volume_dir = volume_dir
-        self.mask_dir = mask_dir
-        self.output_train_dir = output_train_dir
-        self.output_val_dir = output_val_dir
+        self.volume_dir = Path(volume_dir)
+        self.mask_dir = Path(mask_dir)
+        self.output_train_dir = Path(output_train_dir)
+        self.output_val_dir = Path(output_val_dir)
         self.validation_fraction = validation_fraction
         self.target_shape = target_volume_shape
         self.device = self._get_device()

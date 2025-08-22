@@ -12,46 +12,27 @@ Usage:
 
 Make sure your data paths are correctly set in the constants.py file before running.
 """
-
+import os
 from pathlib import Path
-from torch_tomo_slab import config, constants
+from typing import Union
+
 from torch_tomo_slab.processing import TrainingDataGenerator
 from torch_tomo_slab.trainer import TomoSlabTrainer
 
 
-def train_and_prep(tomo_dir,
-            mask_vol_dir,
-            prepared_data_out_dir):
+def train_and_prep(tomo_dir:Union[str,os.PathLike],
+                   mask_vol_dir:Union[str,os.PathLike],
+                   output_train_dir:Union[str,os.PathLike],
+                   output_val_dir:Union[str,os.PathLike]):
 
-    """Run the complete training pipeline."""
-    print("=== Torch-Tomo-Slab Training Pipeline ===")
-    print("=== Prepare training inputs ===")
-    config.TOMOGRAM_DIR = tomo_dir
-    config.MASKS_DIR = mask_vol_dir
-    config.PREPARED_DATA_BASE_DIR = prepared_data_out_dir
-
-    # Display current configuration
-    print(f"\nData Configuration:")
-    print(f"  Tomograms directory: {config.TOMOGRAM_DIR}")
-    print(f"  Masks directory: {config.MASKS_DIR}")
-    print(f"  Train/Val data will be saved to: {config.PREPARED_DATA_BASE_DIR}")
-    
-    # Check if input directories exist
-    if not config.TOMOGRAM_DIR.exists():
-        print(f"\nWarning: Tomogram directory {config.TOMOGRAM_DIR} does not exist!")
-        print("Please create this directory and place your .mrc tomogram files there.")
-        return
-    
-    if not config.MASKS_DIR.exists():
-        print(f"\nWarning: Mask directory {config.MASKS_DIR} does not exist!")
-        print("Please create this directory and place your .mrc mask files there.")
-        return
-    
     # Step 1: Prepare training data
     print("\n=== Step 1: Preparing Training Data ===")
     print("Converting 3D volumes to 2D training slices...")
     
-    generator = TrainingDataGenerator()
+    generator = TrainingDataGenerator(volume_dir=tomo_dir,
+                                      mask_dir=mask_vol_dir,
+                                      output_train_dir=output_train_dir,
+                                      output_val_dir=output_val_dir)
     generator.run()
     
     print("✓ Data preparation complete.")
@@ -60,7 +41,8 @@ def train_and_prep(tomo_dir,
     print("\n=== Step 2: Training Model ===")
     print("Starting training process...")
     
-    trainer = TomoSlabTrainer()
+    trainer = TomoSlabTrainer(train_data_dir=output_train_dir,
+                              val_data_dir=output_val_dir)
     trainer.fit()
     
     print("✓ Training complete!")
@@ -71,5 +53,9 @@ def train_and_prep(tomo_dir,
 if __name__ == "__main__":
     tomo_dir = "blah"
     mask_vol_dir = "blah"
-    prepared_data_out_dir = "blah"
-    train_and_prep(tomo_dir, mask_vol_dir, prepared_data_out_dir)
+    output_train_dir ="blah"
+    output_val_dir = "blah"
+    train_and_prep(tomo_dir=tomo_dir,
+                   mask_vol_dir=mask_vol_dir,
+                   output_train_dir=output_train_dir,
+                   output_val_dir=output_val_dir)
