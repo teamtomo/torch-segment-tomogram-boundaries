@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 4e-4  # Reduce from 1e-4 to 5e-5 for smoother convergence
+LEARNING_RATE: float = 1e-3  # Reduce from 1e-4 to 5e-5 for smoother convergence
 MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
 
@@ -30,8 +30,8 @@ MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
-    'encoder_depth': 3,
-    'decoder_channels': [128, 64, 32],
+    'encoder_depth': 4,
+    'decoder_channels': [256, 128, 64, 32],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 2,
@@ -81,7 +81,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-5  # Increase from 1e-8 to add regularization
+        "weight_decay": 1e-4  # Increase from 1e-8 to add regularization
     }
 }
 
