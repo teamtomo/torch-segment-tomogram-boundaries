@@ -52,7 +52,7 @@ BATCH_SIZE: int = 64
 NUM_WORKERS: int = 8
 
 # --- BALANCED CROPPING ---
-USE_BALANCED_CROP: bool = False              # Enable balanced cropping that avoids pure 0 or 1 patches
+USE_BALANCED_CROP: bool = True              # Enable balanced cropping that avoids pure 0 or 1 patches
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
