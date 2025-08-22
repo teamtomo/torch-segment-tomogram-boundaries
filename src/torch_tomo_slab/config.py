@@ -42,7 +42,7 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'dice+weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.4, 0.6],     # Only used for combined losses like 'dice+bce'
     'params': {
         'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence

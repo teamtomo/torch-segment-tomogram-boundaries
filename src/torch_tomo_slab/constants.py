@@ -27,11 +27,11 @@ USE_SWA: bool = True
 AUGMENTATION_CONFIG: dict[str, any] = {
     'CROP_SIZE': 256,                   # Square training patches from 256x512 orthogonal views
     'PAD_SIZE': 512,                    # Pad shorter dimension (256) to match longer (512) for square crops
-    'ROTATE_LIMIT': 90,                # Increase rotation for more variety
+    'ROTATE_LIMIT': 30,                # Increase rotation for more variety
     'BRIGHTNESS_CONTRAST_LIMIT': 0.15,   # Increase from 0.2 to force robustness
     'GAUSS_NOISE_STD_RANGE': (0.0, 0.04), # Increase noise
-    'GAUSS_BLUR_LIMIT': (3, 7),         # More blur variation
-    'ELASTIC_ALPHA': 25,                 # Add elastic deformation back
+    'GAUSS_BLUR_LIMIT': (3, 5),         # More blur variation
+    'ELASTIC_ALPHA': 10,                 # Add elastic deformation back
     'ELASTIC_SIGMA': 3,
     'LOCAL_VARIANCE_KERNEL_SIZE': 5,
     # Balanced crop parameters (simple fill ratio filtering)
