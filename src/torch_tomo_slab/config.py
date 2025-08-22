@@ -30,8 +30,8 @@ MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
-    'encoder_depth': 5,
-    'decoder_channels': [256, 128, 64, 32, 16],
+    'encoder_depth': 3,
+    'decoder_channels': [128, 64, 32],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 2,
@@ -88,19 +88,9 @@ OPTIMIZER_CONFIG: dict[str, any] = {
 # --- SCHEDULER ---
 USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
-    "name": "CosineAnnealingLR",
+    "name": "ReduceLROnPlateau", 
     "params": {
-        "T_max": 25,        # Half cycle length (LR will go from max to min over 25 epochs)
-        "eta_min": 1e-6,    # Minimum learning rate
-    }
-    # Note: CosineAnnealingLR doesn't use 'monitor' - it's step-based, not performance-based
+        "mode": "max", "factor": 0.5, "patience": 5, "min_lr": 1e-7, "threshold": 0.01
+    },
+    "monitor": "val_dice"
 }
-
-# Alternative: Keep ReduceLROnPlateau if you prefer
-# SCHEDULER_CONFIG: dict[str, any] = {
-#     "name": "ReduceLROnPlateau", 
-#     "params": {
-#         "mode": "max", "factor": 0.5, "patience": 5, "min_lr": 1e-7, "threshold": 0.01
-#     },
-#     "monitor": "val_dice"
-# }
