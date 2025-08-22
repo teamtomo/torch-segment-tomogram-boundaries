@@ -22,7 +22,7 @@ from torch_tomo_slab.trainer import TomoSlabTrainer
 def train_and_prep(tomo_dir:Union[str,os.PathLike],
                    mask_vol_dir:Union[str,os.PathLike],
                    output_train_dir:Union[str,os.PathLike],
-                   output_val_dir:Union[str,os.PathLike]):
+                   output_val_dir:Union[str,os.PathLike], ckpt_save_dir:Union[str,os.PathLike]):
 
     # Step 1: Prepare training data
     print("\n=== Step 1: Preparing Training Data ===")
@@ -42,7 +42,7 @@ def train_and_prep(tomo_dir:Union[str,os.PathLike],
     
     trainer = TomoSlabTrainer(train_data_dir=output_train_dir,
                               val_data_dir=output_val_dir,
-                              )
+                              ckpt_save_dir=ckpt_save_dir)
     trainer.fit()
     
     print("✓ Training complete!")
@@ -55,7 +55,9 @@ if __name__ == "__main__":
     mask_vol_dir = "/home/pranav/data/training/torch-tomo-slab/data_in/boundary_mask_voumes"
     output_train_dir = "/home/pranav/data/training/torch-tomo-slab/prepared_data/train"
     output_val_dir = "/home/pranav/data/training/torch-tomo-slab/prepared_data/val"
+    ckpt_save_dir = "/home/pranav/data/training/torch-tomo-slab/"
     train_and_prep(tomo_dir=tomo_dir,
                    mask_vol_dir = mask_vol_dir,
                    output_train_dir = output_train_dir,
-                   output_val_dir = output_val_dir)
+                   output_val_dir = output_val_dir,
+                   ckpt_save_dir=ckpt_save_dir)
