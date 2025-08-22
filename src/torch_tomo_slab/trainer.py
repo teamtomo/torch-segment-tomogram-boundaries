@@ -121,8 +121,8 @@ class TomoSlabTrainer:
         self.in_channels = in_channels
         self.loss_config = loss_config
         self.learning_rate = learning_rate
-        self.train_data_dir = train_data_dir
-        self.val_data_dir = val_data_dir
+        self.train_data_dir = Path(train_data_dir)
+        self.val_data_dir = Path(val_data_dir)
         self.global_rank = int(os.environ.get("GLOBAL_RANK", 0))
 
     def _setup_datamodule(self) -> SegmentationDataModule:
