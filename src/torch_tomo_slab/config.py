@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 1e-3  # Reduce from 1e-4 to 5e-5 for smoother convergence
+LEARNING_RATE: float = 5e-4  # Reduce from 1e-4 to 5e-5 for smoother convergence
 MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
 
@@ -90,7 +90,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "ReduceLROnPlateau", 
     "params": {
-        "mode": "max", "factor": 0.5, "patience": 5, "min_lr": 1e-7, "threshold": 0.01
+        "mode": "max", "factor": 0.5, "patience": 2, "min_lr": 1e-7, "threshold": 0.01
     },
     "monitor": "val_dice"
 }
