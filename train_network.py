@@ -13,7 +13,6 @@ Usage:
 Make sure your data paths are correctly set in the constants.py file before running.
 """
 import os
-from pathlib import Path
 from typing import Union
 
 from torch_tomo_slab.processing import TrainingDataGenerator
