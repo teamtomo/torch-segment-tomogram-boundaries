@@ -91,16 +91,22 @@ class SegmentationModel(pl.LightningModule):
         scheduler_config = config.SCHEDULER_CONFIG
         scheduler_name = scheduler_config["name"]
         scheduler_params = scheduler_config["params"]
-        scheduler_monitor = scheduler_config["monitor"]
-
+        
         scheduler = getattr(torch.optim.lr_scheduler, scheduler_name)(optimizer, **scheduler_params)
+
+        # Configure scheduler differently based on type
+        lr_scheduler_config = {
+            "scheduler": scheduler,
+            "interval": "epoch",
+            "frequency": 1,
+        }
+        
+        # Only add monitor for schedulers that need it
+        scheduler_monitor = scheduler_config.get("monitor")
+        if scheduler_monitor:
+            lr_scheduler_config["monitor"] = scheduler_monitor
 
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": scheduler_monitor,
-                "interval": "epoch",
-                "frequency": 1,
-            },
+            "lr_scheduler": lr_scheduler_config,
         }

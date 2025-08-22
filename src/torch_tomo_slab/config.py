@@ -21,8 +21,8 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 1e-4
-MAX_EPOCHS: int = 50
+LEARNING_RATE: float = 4e-4  # Reduce from 1e-4 to 5e-5 for smoother convergence
+MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
 
 # --- MODEL ARCHITECTURE ---
@@ -58,7 +58,7 @@ USE_BALANCED_CROP: bool = True              # Enable balanced cropping that avoi
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
-EMA_ALPHA: float = 0.15                # Smoothing factor for validation metric (higher means more responsive)
+EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 8       # Epochs of no improvement (after SWA) before stopping
 EARLY_STOP_MIN_DELTA: float = 0.005   # Minimum change to be considered an improvement
@@ -88,12 +88,19 @@ OPTIMIZER_CONFIG: dict[str, any] = {
 # --- SCHEDULER ---
 USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
-    "name": "ReduceLROnPlateau",
+    "name": "CosineAnnealingLR",
     "params": {
-        "mode": "max",
-        "factor": 0.1,
-        "patience": 3,
-        "min_lr": 1e-8
-    },
-    "monitor": "val_dice"
+        "T_max": 25,        # Half cycle length (LR will go from max to min over 25 epochs)
+        "eta_min": 1e-6,    # Minimum learning rate
+    }
+    # Note: CosineAnnealingLR doesn't use 'monitor' - it's step-based, not performance-based
 }
+
+# Alternative: Keep ReduceLROnPlateau if you prefer
+# SCHEDULER_CONFIG: dict[str, any] = {
+#     "name": "ReduceLROnPlateau", 
+#     "params": {
+#         "mode": "max", "factor": 0.5, "patience": 5, "min_lr": 1e-7, "threshold": 0.01
+#     },
+#     "monitor": "val_dice"
+# }
