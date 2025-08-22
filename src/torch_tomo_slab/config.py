@@ -81,7 +81,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-4  # Increase from 1e-8 to add regularization
+        "weight_decay": 1e-5  # Increase from 1e-8 to add regularization
     }
 }
 
