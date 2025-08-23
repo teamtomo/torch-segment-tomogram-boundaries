@@ -88,23 +88,52 @@ class SegmentationModel(pl.LightningModule):
         if not config.USE_LR_SCHEDULER:
             return optimizer
 
-        scheduler_config = config.SCHEDULER_CONFIG
-        scheduler_name = scheduler_config["name"]
-        scheduler_params = scheduler_config["params"]
-        
-        scheduler = getattr(torch.optim.lr_scheduler, scheduler_name)(optimizer, **scheduler_params)
+        # New Warm-up and Decay Logic
+        if hasattr(config, 'WARMUP_EPOCHS') and config.WARMUP_EPOCHS > 0:
+            warmup_epochs = config.WARMUP_EPOCHS
+            main_scheduler_epochs = config.MAX_EPOCHS - warmup_epochs
 
-        # Configure scheduler differently based on type
-        lr_scheduler_config = {
-            "scheduler": scheduler,
-            "interval": "epoch",
-            "frequency": 1,
-        }
-        
-        # Only add monitor for schedulers that need it
-        scheduler_monitor = scheduler_config.get("monitor")
-        if scheduler_monitor:
-            lr_scheduler_config["monitor"] = scheduler_monitor
+            # Warm-up scheduler
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=1e-6, end_factor=1.0, total_iters=warmup_epochs
+            )
+
+            # Main decay scheduler
+            main_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=main_scheduler_epochs, eta_min=config.SCHEDULER_CONFIG["params"].get('eta_min', 1e-7)
+            )
+
+            # Sequential scheduler
+            scheduler = torch.optim.lr_scheduler.SequentialLR(
+                optimizer, schedulers=[warmup_scheduler, main_scheduler], milestones=[warmup_epochs]
+            )
+            
+            lr_scheduler_config = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            }
+
+        else: # Fallback to original logic if no warm-up is configured
+            scheduler_config = config.SCHEDULER_CONFIG
+            scheduler_name = scheduler_config["name"]
+            scheduler_params = scheduler_config["params"]
+            
+            # Special handling for CosineAnnealingLR T_max if not specified
+            if scheduler_name == "CosineAnnealingLR" and 'T_max' not in scheduler_params:
+                scheduler_params['T_max'] = config.MAX_EPOCHS
+
+            scheduler = getattr(torch.optim.lr_scheduler, scheduler_name)(optimizer, **scheduler_params)
+
+            lr_scheduler_config = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            }
+            
+            scheduler_monitor = scheduler_config.get("monitor")
+            if scheduler_monitor:
+                lr_scheduler_config["monitor"] = scheduler_monitor
 
         return {
             "optimizer": optimizer,

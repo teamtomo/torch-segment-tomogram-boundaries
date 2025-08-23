@@ -21,9 +21,10 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 5e-4  # Reduce from 1e-4 to 5e-5 for smoother convergence
+LEARNING_RATE: float = 5e-4
 MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
+WARMUP_EPOCHS: int = 5
 
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
@@ -42,7 +43,7 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'name': 'dice+weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.4, 0.6],     # Only used for combined losses like 'dice+bce'
     'params': {
         'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
@@ -57,7 +58,7 @@ NUM_WORKERS: int = 8
 USE_BALANCED_CROP: bool = True              # Enable balanced cropping that avoids pure 0 or 1 patches
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
-USE_DYNAMIC_MANAGER: bool = False
+USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 8       # Epochs of no improvement (after SWA) before stopping
@@ -65,7 +66,7 @@ EARLY_STOP_MIN_DELTA: float = 0.005   # Minimum change to be considered an impro
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 15
-STANDARD_SWA_START_FRACTION: float = 0.1
+STANDARD_SWA_START_FRACTION: float = 0.75
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
@@ -88,9 +89,9 @@ OPTIMIZER_CONFIG: dict[str, any] = {
 # --- SCHEDULER ---
 USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
-    "name": "ReduceLROnPlateau", 
+    "name": "CosineAnnealingLR", 
     "params": {
-        "mode": "max", "factor": 0.5, "patience": 2, "min_lr": 1e-7, "threshold": 0.01
+        "eta_min": 1e-7,
     },
     "monitor": "val_dice"
 }
