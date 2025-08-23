@@ -106,8 +106,8 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, fill=0, fill_mask=0, p=1.0),
             A.Rotate(limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'], p=0.7, border_mode=0, fill=0, fill_mask=0),
             A.Transpose(p=0.5),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
+            #A.HorizontalFlip(p=0.5),
+            #A.VerticalFlip(p=0.5),
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
             A.CoarseDropout(p=0.4, num_holes_range=(1,12), hole_height_range=(0.05,0.25), hole_width_range=(0.05,0.25), fill=0),
         ]

@@ -1,4 +1,6 @@
 # src/torch_tomo_slab/pl_model.py
+import math
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -34,6 +36,10 @@ class SegmentationModel(pl.LightningModule):
         loss = self.criterion(pred_logits, label, weight_map)
         self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage == 'train'), on_epoch=True, batch_size=batch_size,
                  sync_dist=True)
+        
+        # Log the learning rate to the progress bar
+        self.log('lr', self.trainer.optimizers[0].param_groups[0]['lr'], prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size)
+        
         return loss, pred_logits
 
     def training_step(self, batch, batch_idx):
@@ -68,9 +74,6 @@ class SegmentationModel(pl.LightningModule):
         pred_prob_grid = torchvision.utils.make_grid(pred_probs[:num_images_to_log].to(torch.float32), **grid_params)
         self.logger.experiment.add_image(f"{stage_name}/Prediction Probabilities", pred_prob_grid, self.current_epoch)
 
-        pred_binary = (pred_probs > 0.5).float()
-        pred_binary_grid = torchvision.utils.make_grid(pred_binary[:num_images_to_log].to(torch.float32), **grid_params)
-        self.logger.experiment.add_image(f"{stage_name}/Prediction Binary", pred_binary_grid, self.current_epoch)
 
     def dice_coefficient(self, pred, target, smooth=1e-5):
         intersection = (pred * target).sum(dim=(1, 2, 3))
@@ -88,24 +91,22 @@ class SegmentationModel(pl.LightningModule):
         if not config.USE_LR_SCHEDULER:
             return optimizer
 
-        # New Warm-up and Decay Logic
+        # New unified Warm-up and Decay Logic
         if hasattr(config, 'WARMUP_EPOCHS') and config.WARMUP_EPOCHS > 0:
             warmup_epochs = config.WARMUP_EPOCHS
-            main_scheduler_epochs = config.MAX_EPOCHS - warmup_epochs
-
-            # Warm-up scheduler
-            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-                optimizer, start_factor=1e-6, end_factor=1.0, total_iters=warmup_epochs
-            )
-
+            max_epochs = config.MAX_EPOCHS
+            
             # Main decay scheduler
             main_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=main_scheduler_epochs, eta_min=config.SCHEDULER_CONFIG["params"].get('eta_min', 1e-7)
+                optimizer, T_max=max_epochs - warmup_epochs, eta_min=config.SCHEDULER_CONFIG["params"].get('eta_min', 1e-7)
             )
 
             # Sequential scheduler
             scheduler = torch.optim.lr_scheduler.SequentialLR(
-                optimizer, schedulers=[warmup_scheduler, main_scheduler], milestones=[warmup_epochs]
+                optimizer, schedulers=[
+                    torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-6, end_factor=1.0, total_iters=warmup_epochs),
+                    main_scheduler
+                ], milestones=[warmup_epochs]
             )
             
             lr_scheduler_config = {
