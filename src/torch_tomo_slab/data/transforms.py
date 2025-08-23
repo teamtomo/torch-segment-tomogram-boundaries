@@ -139,6 +139,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
     else:
         # Validation: Pad to a consistent size, then center crop.
         transform_list = [
-            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0)
+            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
+            A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
         ]
     return A.Compose(transform_list)
