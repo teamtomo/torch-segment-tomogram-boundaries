@@ -38,7 +38,8 @@ class SegmentationModel(pl.LightningModule):
                  sync_dist=True)
         
         # Log the learning rate to the progress bar
-        self.log('lr', self.trainer.optimizers[0].param_groups[0]['lr'], prog_bar=True, on_step=False, on_epoch=True, batch_size=batch_size)
+        self.log('lr', self.trainer.optimizers[0].param_groups[0]['lr'], prog_bar=True,
+                 on_step=False, on_epoch=True, batch_size=batch_size, sync_dist=True)
         
         return loss, pred_logits
 

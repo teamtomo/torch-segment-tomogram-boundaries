@@ -103,17 +103,15 @@ class BalancedCrop(A.DualTransform):
 def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
     if is_training:
         transform_list = [
-            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, fill=0, fill_mask=0, p=1.0),
-            A.Rotate(limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'], p=0.7, border_mode=0, fill=0, fill_mask=0),
+            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
+            A.Rotate(limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'], p=0.7, border_mode=0),
             A.Transpose(p=0.5),
-            #A.HorizontalFlip(p=0.5),
-            #A.VerticalFlip(p=0.5),
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
-            A.CoarseDropout(p=0.4, num_holes_range=(1,12), hole_height_range=(0.05,0.25), hole_width_range=(0.05,0.25), fill=0),
+            A.CoarseDropout(p=0.4, max_holes=12, max_height_fraction=0.25, max_width_fraction=0.25, fill_value=0),
         ]
 
         if 'GAUSS_NOISE_STD_RANGE' in constants.AUGMENTATION_CONFIG:
-            transform_list.append(A.GaussNoise(std_range=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.4))
+            transform_list.append(A.GaussNoise(var_limit=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.4))
 
         if 'GAUSS_BLUR_LIMIT' in constants.AUGMENTATION_CONFIG:
             transform_list.append(A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.4))
@@ -139,8 +137,9 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 A.RandomCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
             )
     else:
+        # Validation: Pad to a consistent size, then center crop.
         transform_list = [
+            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
             A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0),
-            A.Resize(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0),
         ]
     return A.Compose(transform_list)
