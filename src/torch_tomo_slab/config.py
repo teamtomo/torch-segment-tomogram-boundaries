@@ -57,7 +57,7 @@ NUM_WORKERS: int = 8
 USE_BALANCED_CROP: bool = True              # Enable balanced cropping that avoids pure 0 or 1 patches
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
-USE_DYNAMIC_MANAGER: bool = True
+USE_DYNAMIC_MANAGER: bool = False
 EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 8       # Epochs of no improvement (after SWA) before stopping
@@ -65,7 +65,7 @@ EARLY_STOP_MIN_DELTA: float = 0.005   # Minimum change to be considered an impro
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 15
-STANDARD_SWA_START_FRACTION: float = 0.75
+STANDARD_SWA_START_FRACTION: float = 0.1
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
