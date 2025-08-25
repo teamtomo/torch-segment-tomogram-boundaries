@@ -6,7 +6,7 @@ processing, model training, and inference capabilities built on PyTorch Lightnin
 and segmentation-models-pytorch.
 
 Main Components:
-- TrainingDataGenerator: Converts 3D volumes to 2D training data
+
 - TomoSlabTrainer: Handles model training with PyTorch Lightning
 - TomoSlabPredictor: Performs inference and generates boundary masks
 """

@@ -23,7 +23,7 @@ from tqdm import tqdm
 from torch_tomo_slab import config
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
-from torch_tomo_slab.processing import TrainingDataGenerator
+
 from torch_tomo_slab.utils import threeD, twoD
 
 # Configure logging for prediction pipeline
@@ -232,8 +232,9 @@ class TomoSlabPredictor:
 
     @torch.no_grad()
     def predict(self,
-                input_tomogram: Union[Path, np.ndarray],
+                input_tomogram: Union[str, Path, np.ndarray],
                 output_path: Optional[Path] = None,
+                save_raw_mask_path: Optional[Path] = None,
                 slab_size: int = 15,
                 batch_size: int = 16,
                 binarize_threshold: float = 0.5,
@@ -245,10 +246,11 @@ class TomoSlabPredictor:
         This method performs the complete inference workflow:
         1. Load and preprocess input tomogram
         2. Predict boundary probabilities using trained model
-        3. Apply optional 3D Gaussian smoothing
-        4. Binarize probability maps
-        5. Fit planes to boundary points
-        6. Generate final slab mask from fitted planes
+        3. Apply slab blending for temporal consistency
+        4. Apply optional 3D Gaussian smoothing
+        5. Binarize probability maps
+        6. Fit planes to boundary points
+        7. Generate final slab mask from fitted planes
 
         Parameters
         ----------
@@ -256,8 +258,10 @@ class TomoSlabPredictor:
             Input tomogram as MRC file path or pre-loaded 3D numpy array.
         output_path : Path, optional
             Path to save output mask as MRC file. If None, only returns array.
+        save_raw_mask_path : Path, optional
+            Path to save the raw binarized mask before plane fitting. If None, not saved.
         slab_size : int, default=15
-            Size of slab for temporal blending (must be odd number).
+            Size of slab for temporal blending (must be odd number). If 1, no blending.
         batch_size : int, default=16
             Batch size for processing 2D slices during inference.
         binarize_threshold : float, default=0.5
@@ -279,7 +283,7 @@ class TomoSlabPredictor:
         RuntimeError
             If RANSAC plane fitting encounters numerical issues.
         """
-        if isinstance(input_tomogram, Path):
+        if isinstance(input_tomogram, Path) or isinstance(input_tomogram, str):
             with mrcfile.open(input_tomogram, permissive=True) as mrc:
                 original_data_np = mrc.data.astype(np.float32)
                 voxel_size = mrc.voxel_size.copy()
@@ -290,11 +294,17 @@ class TomoSlabPredictor:
         original_shape = original_data_np.shape
         logging.info(f"Input tomogram shape: {original_shape}")
 
-        processor = TrainingDataGenerator()
+        
         resized_volume = threeD.resize_and_pad_3d(torch.from_numpy(original_data_np),target_shape=self.target_shape_3d, mode='image').to(self.device)
 
-        pred_xz = self._predict_single_axis_with_slab_blending(resized_volume, 'XZ', slab_size, batch_size, processor)
-        pred_yz = self._predict_single_axis_with_slab_blending(resized_volume.permute(0, 2, 1), 'YZ', slab_size, batch_size, processor).permute(0, 2, 1)
+        # Predict along XZ and YZ axes
+        pred_xz = self._predict_single_axis(resized_volume, 'XZ', batch_size)
+        pred_yz = self._predict_single_axis(resized_volume.permute(0, 2, 1), 'YZ', batch_size).permute(0, 2, 1)
+
+        # Apply slab blending
+        if slab_size > 1:
+            pred_xz = self._apply_slab_blending(pred_xz, slab_size, 'XZ')
+            pred_yz = self._apply_slab_blending(pred_yz, slab_size, 'YZ')
 
         logging.info("Averaging final predictions from both axes.")
         prob_map_tensor = (pred_xz + pred_yz) / 2.0
@@ -319,98 +329,13 @@ class TomoSlabPredictor:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             mrcfile.write(output_path, final_mask, voxel_size=voxel_size, overwrite=True)
 
+        # Save the raw binarized mask if a path is provided
+        if save_raw_mask_path:
+            logging.info(f"Saving raw binarized mask to {save_raw_mask_path}")
+            save_raw_mask_path.parent.mkdir(parents=True, exist_ok=True)
+            mrcfile.write(save_raw_mask_path, binary_mask_np, voxel_size=voxel_size, overwrite=True)
+
         gc.collect()
         if torch.cuda.is_available(): torch.cuda.empty_cache()
         logging.info("Prediction complete.")
         return final_mask
-
-    def _predict_single_axis_with_slab_blending(self, volume_3d: torch.Tensor, axis: str, slab_size: int, batch_size: int, proc: TrainingDataGenerator) -> torch.Tensor:
-        """
-        Predict boundary probabilities along single axis with slab blending.
-
-        Parameters
-        ----------
-        volume_3d : torch.Tensor
-            Input volume tensor of shape (D, H, W).
-        axis : str
-            Axis name for logging ('XZ' or 'YZ').
-        slab_size : int
-            Size of temporal slab for blending adjacent slices.
-        batch_size : int
-            Batch size for model inference.
-        proc : TrainingDataGenerator
-            Data processor instance (unused, kept for compatibility).
-
-        Returns
-        -------
-        torch.Tensor
-            Predicted probability volume of same shape as input.
-        """
-        num_slices = volume_3d.shape[1]
-        final_slices, hann_window = [], torch.hann_window(slab_size, periodic=False, device=self.device)
-        for i in tqdm(range(num_slices), desc=f"Slab Blending ({axis} axis)", leave=False, ncols=80):
-            half_slab = slab_size // 2
-            start, end = max(0, i - half_slab), min(num_slices, i + half_slab + 1)
-            predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size, proc)
-            win_start, win_end = max(0, half_slab - i), min(slab_size, half_slab + (num_slices - i))
-            current_window = hann_window[win_start:win_end]
-            final_slice = torch.einsum('dwh,d->wh', predicted_slab, current_window) / current_window.sum()
-            final_slices.append(final_slice)
-        return torch.stack(final_slices, dim=1)
-
-    def _predict_raw_slab(self, raw_slab: torch.Tensor, batch_size: int, proc: TrainingDataGenerator) -> torch.Tensor:
-        """
-        Run model inference on raw slab of 2D slices.
-
-        Parameters
-        ----------
-        raw_slab : torch.Tensor
-            Slab of 2D slices as tensor of shape (D, H, W).
-        batch_size : int
-            Batch size for processing slices.
-        proc : TrainingDataGenerator
-            Data processor instance (unused, kept for compatibility).
-
-        Returns
-        -------
-        torch.Tensor
-            Predicted probabilities for each slice as (D, H, W) tensor.
-        """
-        views = raw_slab.permute(1, 0, 2)
-        all_preds = []
-        for i in range(0, len(views), batch_size):
-            batch_views = views[i:i+batch_size]
-            input_channels = []
-            for v in batch_views:
-                norm_v = twoD.robust_normalization(v)
-                var_v = twoD.local_variance_2d(norm_v)
-                input_channels.append(torch.stack([norm_v, var_v], dim=0))
-            preds = torch.sigmoid(self.model(torch.stack(input_channels))).detach()
-            all_preds.append(preds)
-        return torch.cat(all_preds).squeeze(1)
-
-    def _gpu_gaussian_blur_3d(self, tensor: torch.Tensor, sigma: float) -> torch.Tensor:
-        """
-        Apply 3D Gaussian blur using GPU-accelerated convolution.
-
-        Parameters
-        ----------
-        tensor : torch.Tensor
-            Input 3D tensor to blur.
-        sigma : float
-            Standard deviation for Gaussian kernel.
-
-        Returns
-        -------
-        torch.Tensor
-            Blurred tensor of same shape as input.
-        """
-        kernel_size = 2 * math.ceil(3.5 * sigma) + 1
-        coords = torch.arange(kernel_size, device=tensor.device, dtype=tensor.dtype) - kernel_size // 2
-        g = coords.pow(2); kernel_1d = torch.exp(-g / (2 * sigma**2))
-        kernel_3d = kernel_1d[:, None, None] * kernel_1d[None, :, None] * kernel_1d[None, None, :]
-        kernel_3d /= kernel_3d.sum()
-        kernel_5d = kernel_3d.unsqueeze(0).unsqueeze(0)
-        conv = nn.Conv3d(1, 1, kernel_size, padding='same', bias=False).to(tensor.device)
-        conv.weight.data = kernel_5d
-        return conv(tensor.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
