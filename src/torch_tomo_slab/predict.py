@@ -425,7 +425,7 @@ class TomoSlabPredictor:
         if save_raw_mask_path:
             logging.info(f"Saving raw binarized mask to {save_raw_mask_path}")
             save_raw_mask_path.parent.mkdir(parents=True, exist_ok=True)
-            mrcfile.write(save_raw_mask_path, binary_mask_np, voxel_size=voxel_size, overwrite=True)
+            mrcfile.write(save_raw_mask_path, prob_map_np, voxel_size=voxel_size, overwrite=True)
 
         gc.collect()
         if torch.cuda.is_available(): torch.cuda.empty_cache()
