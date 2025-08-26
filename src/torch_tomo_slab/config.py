@@ -21,14 +21,14 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 5e-4
+LEARNING_RATE: float = 1e-4
 MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
 WARMUP_EPOCHS: int = 5
 
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
-    'arch': "UnetPlusPlus",
+    'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
     'encoder_depth': 3,
@@ -36,6 +36,7 @@ MODEL_CONFIG: dict[str, any] = {
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 2,
+    'dropout': 0.3,  # Add dropout to decoder layers
 }
 
 # --- Loss Function Configuration ---
@@ -58,11 +59,11 @@ NUM_WORKERS: int = 8
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
-EARLY_STOP_PATIENCE: int = 8       # Epochs of no improvement (after SWA) before stopping
-EARLY_STOP_MIN_DELTA: float = 0.005   # Minimum change to be considered an improvement
+EARLY_STOP_PATIENCE: int = 6       # Epochs of no improvement (after SWA) before stopping
+EARLY_STOP_MIN_DELTA: float = 0.001   # Minimum change to be considered an improvement
 
 # --- FALLBACK: STANDARD CALLBACKS ---
-STANDARD_EARLY_STOPPING_PATIENCE: int = 15
+STANDARD_EARLY_STOPPING_PATIENCE: int = 6
 STANDARD_SWA_START_FRACTION: float = 0.75
 
 # --- PL TRAINER & INFRASTRUCTURE ---
@@ -79,7 +80,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-4  # Increase from 1e-8 to add regularization
+        "weight_decay": 1e-4
     }
 }
 
