@@ -158,25 +158,3 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
         ]
 
     return A.Compose(transform_list)
-
-            # Balanced rectangular crop
-            BalancedCrop(
-                height=constants.AUGMENTATION_CONFIG['CROP_HEIGHT'],
-                width=constants.AUGMENTATION_CONFIG['CROP_WIDTH'],
-                min_fill_ratio=0.05,
-                max_fill_ratio=0.95,
-                max_attempts=20,
-                p=1.0
-            )
-        ]
-    else:
-        transform_list = [
-            A.PadIfNeeded(
-                min_height=constants.AUGMENTATION_CONFIG['PAD_HEIGHT'],
-                min_width=constants.AUGMENTATION_CONFIG['PAD_WIDTH'],
-                border_mode=cv2.BORDER_REFLECT_101,
-                p=1.0
-            )
-        ]
-
-    return A.Compose(transform_list)
