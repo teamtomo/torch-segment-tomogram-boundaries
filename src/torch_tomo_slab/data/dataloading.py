@@ -22,10 +22,9 @@ class SegmentationDataModule(pl.LightningDataModule):
         val_pt_files: List[Path],
         batch_size: int,
         num_workers: int,
-        use_balanced_crop: bool = True,
     ):
         super().__init__()
-        self.save_hyperparameters("batch_size", "num_workers", "use_balanced_crop")
+        self.save_hyperparameters("batch_size", "num_workers")
         self.train_pt_files = train_pt_files
         self.val_pt_files = val_pt_files
         self.train_dataset = None
@@ -38,7 +37,7 @@ class SegmentationDataModule(pl.LightningDataModule):
         """
         self.train_dataset = PTFileDataset(
             self.train_pt_files,
-            transform=get_transforms(is_training=True, use_balanced_crop=self.hparams.use_balanced_crop)
+            transform=get_transforms(is_training=True)
         )
         self.val_dataset = PTFileDataset(
             self.val_pt_files,

@@ -81,8 +81,7 @@ class TomoSlabTrainer:
                  learning_rate: float = config.LEARNING_RATE,
                  train_data_dir: Path = config.TRAIN_DATA_DIR,
                  val_data_dir: Path = config.VAL_DATA_DIR,
-                 ckpt_save_dir: Path = config.CKPT_SAVE_PATH,
-                 use_balanced_crop: bool = config.USE_BALANCED_CROP) -> None:
+                 ckpt_save_dir: Path = config.CKPT_SAVE_PATH) -> None:
         """
         Initialize the TomoSlabTrainer with model and training configurations.
 
@@ -126,7 +125,6 @@ class TomoSlabTrainer:
         self.train_data_dir = Path(train_data_dir)
         self.val_data_dir = Path(val_data_dir)
         self.ckpt_save_dir = Path(ckpt_save_dir)
-        self.use_balanced_crop = use_balanced_crop
         self.global_rank = int(os.environ.get("GLOBAL_RANK", 0))
 
     def _setup_datamodule(self) -> SegmentationDataModule:
@@ -152,7 +150,6 @@ class TomoSlabTrainer:
             val_pt_files=val_files,
             batch_size=config.BATCH_SIZE,
             num_workers=config.NUM_WORKERS,
-            use_balanced_crop=self.use_balanced_crop,
         )
 
     def _setup_model(self) -> SegmentationModel:
@@ -179,8 +176,7 @@ class TomoSlabTrainer:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
             print(f"Using Model: {self.model_arch}-{self.model_encoder} (ImageNet pre-trained)")
             print(f"Using Loss Function: {loss_name}")
-            if self.use_balanced_crop:
-                print("Using BalancedCrop: Avoiding pure empty/filled patches")
+            print("Using enhanced augmentations without cropping for consistent train/val pipeline")
         return SegmentationModel(
             model=base_model,
             loss_function=loss_fn,
