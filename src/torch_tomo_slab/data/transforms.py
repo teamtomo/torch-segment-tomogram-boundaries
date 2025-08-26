@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 import albumentations as A
+import cv2
 import numpy as np
 
 from torch_tomo_slab import constants
@@ -100,46 +101,56 @@ class BalancedCrop(A.DualTransform):
     def targets_as_params(self):
         return ["image", "mask"]
 
+
 def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
     if is_training:
         transform_list = [
-            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
-            A.Rotate(limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'], p=0.7, border_mode=0),
+            # Rectangular padding with edge-preserving border
+            A.PadIfNeeded(
+                min_height=constants.AUGMENTATION_CONFIG['PAD_HEIGHT'],
+                min_width=constants.AUGMENTATION_CONFIG['PAD_WIDTH'],
+                border_mode=cv2.BORDER_REFLECT_101,
+                p=1.0
+            ),
+
+            # Geometric transforms that preserve edges
+            A.Rotate(limit=15, p=0.7, border_mode=cv2.BORDER_REFLECT_101),
             A.Transpose(p=0.5),
-            A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
-            #A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+
+            # Intensity transforms (gentle)
+            A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=0.4),
+            A.CLAHE(clip_limit=2.0, tile_grid_size=(4, 4), p=0.3),  # Enhances edges
+
+            # EDGE-PRESERVING CoarseDropout with inpainting
+            A.CoarseDropout(
+                num_holes_range=(1, 3),
+                hole_height_range=(0.06, 0.12),
+                hole_width_range=(0.06, 0.12),
+                fill='inpaint_telea',  # Key for edge preservation
+                fill_mask=None,
+                p=0.4
+            ),
+
+            # Balanced rectangular crop
+            BalancedCrop(
+                height=constants.AUGMENTATION_CONFIG['CROP_HEIGHT'],
+                width=constants.AUGMENTATION_CONFIG['CROP_WIDTH'],
+                min_fill_ratio=0.05,
+                max_fill_ratio=0.95,
+                max_attempts=20,
+                p=1.0
+            )
         ]
-
-        if 'GAUSS_NOISE_STD_RANGE' in constants.AUGMENTATION_CONFIG:
-            transform_list.append(A.GaussNoise(var_limit=constants.AUGMENTATION_CONFIG['GAUSS_NOISE_STD_RANGE'], p=0.4))
-
-        if 'GAUSS_BLUR_LIMIT' in constants.AUGMENTATION_CONFIG:
-            transform_list.append(A.GaussianBlur(blur_limit=constants.AUGMENTATION_CONFIG['GAUSS_BLUR_LIMIT'], p=0.4))
-
-        if 'ELASTIC_ALPHA' in constants.AUGMENTATION_CONFIG and 'ELASTIC_SIGMA' in constants.AUGMENTATION_CONFIG:
-            transform_list.append(A.ElasticTransform(p=0.3, alpha=constants.AUGMENTATION_CONFIG['ELASTIC_ALPHA'],
-                                                  sigma=constants.AUGMENTATION_CONFIG['ELASTIC_SIGMA']))
-        
-        # Add balanced crop or regular random crop
-        if use_balanced_crop:
-            transform_list.append(
-                BalancedCrop(
-                    height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], 
-                    width=constants.AUGMENTATION_CONFIG['CROP_SIZE'],
-                    min_fill_ratio=constants.AUGMENTATION_CONFIG.get('MIN_FILL_RATIO', 0.1),
-                    max_fill_ratio=constants.AUGMENTATION_CONFIG.get('MAX_FILL_RATIO', 0.9),
-                    max_attempts=constants.AUGMENTATION_CONFIG.get('MAX_CROP_ATTEMPTS', 10),
-                    p=1.0
-                )
-            )
-        else:
-            transform_list.append(
-                A.RandomCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
-            )
     else:
-        # Validation: Pad to a consistent size, then center crop.
         transform_list = [
-            A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
-            #A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
+            A.PadIfNeeded(
+                min_height=constants.AUGMENTATION_CONFIG['PAD_HEIGHT'],
+                min_width=constants.AUGMENTATION_CONFIG['PAD_WIDTH'],
+                border_mode=cv2.BORDER_REFLECT_101,
+                p=1.0
+            )
         ]
+
     return A.Compose(transform_list)

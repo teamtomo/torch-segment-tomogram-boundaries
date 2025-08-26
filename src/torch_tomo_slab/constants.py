@@ -25,17 +25,13 @@ USE_SWA: bool = True
 
 # --- AUGMENTATION PARAMETERS (NEW) ---
 AUGMENTATION_CONFIG: dict[str, any] = {
-    'CROP_SIZE': 256,                   # Square training patches from 256x512 orthogonal views
-    'PAD_SIZE': 512,                    # Pad shorter dimension (256) to match longer (512) for square crops
-    'ROTATE_LIMIT': 30,                 # Rotation limited to +/- 30 degrees
-    'BRIGHTNESS_CONTRAST_LIMIT': 0.15,  # Keep brightness/contrast adjustments
-    # 'GAUSS_NOISE_STD_RANGE': (0.0, 0.04), # Disabled
-    # 'GAUSS_BLUR_LIMIT': (3, 5),         # Disabled as it can soften edges
-    # 'ELASTIC_ALPHA': 10,                # Disabled
-    # 'ELASTIC_SIGMA': 3,                 # Disabled
-    'LOCAL_VARIANCE_KERNEL_SIZE': 5,
-    # Balanced crop parameters (simple fill ratio filtering)
-    'MIN_FILL_RATIO': 0.05,             # Minimum percentage of 1s in patch (5% = avoid pure empty)
-    'MAX_FILL_RATIO': 0.95,             # Maximum percentage of 1s in patch (95% = avoid pure filled)
-    'MAX_CROP_ATTEMPTS': 10,            # Maximum attempts to find balanced crop before fallback
+    'PAD_HEIGHT': 512,     # Rectangular padding
+    'PAD_WIDTH': 768,      # Different aspect ratio
+    'CROP_HEIGHT': 256,    # Rectangular crops
+    'CROP_WIDTH': 384,     # Preserve aspect relationships
+    'ROTATE_LIMIT': 15,    # Reduced to preserve edge geometry
+    'BRIGHTNESS_CONTRAST_LIMIT': 0.15,  # Gentler intensity changes
+    'MIN_FILL_RATIO': 0.05,  # More lenient for edge cases
+    'MAX_FILL_RATIO': 0.95,
+    'MAX_CROP_ATTEMPTS': 20,
 }
