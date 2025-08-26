@@ -51,7 +51,7 @@ LOSS_CONFIG: dict[str, any] = {
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 64
+BATCH_SIZE: int = 32
 NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
