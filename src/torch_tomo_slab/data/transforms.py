@@ -126,7 +126,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 num_holes_range=(1, 3),
                 hole_height_range=(0.06, 0.12),
                 hole_width_range=(0.06, 0.12),
-                fill='inpaint_telea',
+                fill=0,
                 fill_mask=None,
                 p=0.4
             ),
