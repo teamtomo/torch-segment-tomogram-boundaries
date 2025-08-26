@@ -113,9 +113,8 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 p=1.0
             ),
 
-            # Geometric transforms that preserve edges
+            # Geometric transforms that preserve edges (NO TRANSPOSE)
             A.Rotate(limit=15, p=0.7, border_mode=cv2.BORDER_REFLECT_101),
-            A.Transpose(p=0.5),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
 
@@ -127,10 +126,38 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 num_holes_range=(1, 3),
                 hole_height_range=(0.06, 0.12),
                 hole_width_range=(0.06, 0.12),
-                fill='inpaint_telea',  # Key for edge preservation
+                fill='inpaint_telea',
                 fill_mask=None,
                 p=0.4
             ),
+
+            # ADD: Final crop to ensure consistent dimensions
+            BalancedCrop(
+                height=constants.AUGMENTATION_CONFIG['CROP_HEIGHT'],  # e.g., 512
+                width=constants.AUGMENTATION_CONFIG['CROP_WIDTH'],  # e.g., 512
+                min_fill_ratio=0.05,
+                max_fill_ratio=0.95,
+                max_attempts=20,
+                p=1.0
+            )
+        ]
+    else:
+        transform_list = [
+            A.PadIfNeeded(
+                min_height=constants.AUGMENTATION_CONFIG['PAD_HEIGHT'],
+                min_width=constants.AUGMENTATION_CONFIG['PAD_WIDTH'],
+                border_mode=cv2.BORDER_REFLECT_101,
+                p=1.0
+            ),
+            # ADD: Consistent crop for validation too
+            A.CenterCrop(
+                height=constants.AUGMENTATION_CONFIG['CROP_HEIGHT'],
+                width=constants.AUGMENTATION_CONFIG['CROP_WIDTH'],
+                p=1.0
+            )
+        ]
+
+    return A.Compose(transform_list)
 
             # Balanced rectangular crop
             BalancedCrop(
