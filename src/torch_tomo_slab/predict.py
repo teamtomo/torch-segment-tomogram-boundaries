@@ -172,20 +172,20 @@ def generate_mask_from_planes(planes: Dict[str, Dict[str, List[float]]], volume_
 class TomoSlabPredictor:
     """
     Predict tomographic slab boundaries using trained deep learning models.
-    
+
     This class provides a complete inference pipeline for generating clean
     boundary masks from 3D tomographic volumes. It loads trained PyTorch Lightning
     models and applies them to new data with post-processing to generate
     geometrically consistent slab boundaries.
-    
+
     The prediction workflow includes:
     1. Model loading and setup from checkpoint
-    2. Volume preprocessing and normalization  
+    2. Volume preprocessing and normalization
     3. Multi-axis inference with slab blending
     4. Probability map averaging and smoothing
     5. Plane fitting to boundary points
     6. Final mask generation from fitted planes
-    
+
     Attributes
     ----------
     device : torch.device
@@ -231,7 +231,7 @@ class TomoSlabPredictor:
             model=base_model, loss_function=loss_fn
         )
         self.model.eval().to(self.device)
-        
+
         # Compile model for faster inference if requested and supported
         if compile_model:
             self._compile_model()
@@ -244,7 +244,7 @@ class TomoSlabPredictor:
     def _compile_model(self) -> None:
         """
         Compile model using torch.compile for faster inference.
-        
+
         Uses TorchDynamo and TorchInductor to optimize the model.
         Falls back gracefully if compilation is not supported.
         """
@@ -252,7 +252,7 @@ class TomoSlabPredictor:
             # Check if torch.compile is available (PyTorch 2.0+)
             if hasattr(torch, 'compile'):
                 logging.info("Compiling model for faster inference...")
-                
+
                 # Try different compilation modes and backends
                 compile_configs = [
                     # Most aggressive optimization
@@ -262,10 +262,10 @@ class TomoSlabPredictor:
                     # Safe default optimization
                     {'mode': 'default', 'fullgraph': False, 'dynamic': True},
                 ]
-                
+
                 # Try different backends in order of preference
                 backends_to_try = ['inductor', 'aot_eager', 'eager']
-                
+
                 for config in compile_configs:
                     for backend in backends_to_try:
                         try:
@@ -276,18 +276,18 @@ class TomoSlabPredictor:
                         except Exception as e:
                             logging.warning(f"Failed to compile with '{backend}' backend and mode '{config['mode']}': {e}")
                             continue
-                
+
                 logging.warning("All compilation backends failed. Using uncompiled model.")
             else:
                 logging.warning("torch.compile not available. Requires PyTorch 2.0+. Using uncompiled model.")
-                
+
         except Exception as e:
             logging.warning(f"Model compilation failed: {e}. Using uncompiled model.")
 
     def warm_up_model(self, batch_size: int = 16) -> None:
         """
         Warm up compiled model with dummy inputs to trigger optimizations.
-        
+
         Parameters
         ----------
         batch_size : int, default=16
@@ -296,20 +296,20 @@ class TomoSlabPredictor:
         if hasattr(self.model, '_orig_mod'):  # Check if model is compiled
             try:
                 logging.info("Warming up compiled model...")
-                
+
                 # Create dummy input matching expected model input shape (2 channels)
                 if hasattr(self.model, 'hparams') and self.target_shape_3d:
                     D, H, W = self.target_shape_3d
                     dummy_input = torch.randn(batch_size, 2, D, W, device=self.device)
-                    
+
                     # Run a few warm-up iterations
                     for _ in range(3):
                         _ = self.model(dummy_input)
-                    
+
                     logging.info("Model warm-up completed")
                 else:
                     logging.warning("Could not determine input shape for warm-up")
-                    
+
             except Exception as e:
                 logging.warning(f"Model warm-up failed: {e}")
         else:
@@ -385,7 +385,7 @@ class TomoSlabPredictor:
         # Warm up compiled model if requested
         if warm_up:
             self.warm_up_model(batch_size)
-        
+
         resized_volume = threeD.resize_and_pad_3d(torch.from_numpy(original_data_np),target_shape=self.target_shape_3d, mode='image').to(self.device)
 
         # Predict along XZ and YZ axes
@@ -421,9 +421,9 @@ class TomoSlabPredictor:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             mrcfile.write(output_path, final_mask, voxel_size=voxel_size, overwrite=True)
 
-        # Save the raw binarized mask if a path is provided
+        # Save the raw probability map (network output) if a path is provided
         if save_raw_mask_path:
-            logging.info(f"Saving raw binarized mask to {save_raw_mask_path}")
+            logging.info(f"Saving raw probability map to {save_raw_mask_path}")
             save_raw_mask_path.parent.mkdir(parents=True, exist_ok=True)
             mrcfile.write(save_raw_mask_path, prob_map_np, voxel_size=voxel_size, overwrite=True)
 
@@ -454,34 +454,34 @@ class TomoSlabPredictor:
         logging.info(f"Predicting along {axis} axis...")
         D, H, W = volume_3d.shape
         predictions = []
-        
+
         # Process slices in batches for efficiency
         for i in tqdm(range(0, H, batch_size), desc=f"Processing {axis} axis", leave=False, ncols=80):
             end_idx = min(i + batch_size, H)
             batch_slices = []
-            
+
             for j in range(i, end_idx):
                 slice_2d = volume_3d[:, j, :]  # Shape: (D, W)
-                
+
                 # Apply robust normalization
                 slice_norm = robust_normalization(slice_2d)
-                
+
                 # Compute local variance
                 slice_var = local_variance_2d(slice_norm)
-                
+
                 # Create 2-channel input (normalized + variance)
                 two_channel_input = torch.stack([slice_norm, slice_var], dim=0)  # Shape: (2, D, W)
                 batch_slices.append(two_channel_input)
-            
+
             # Stack slices into batch
             batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 2, D, W)
-            
+
             # Process batch through model
             pred_batch = self.model(batch_tensor)
             pred_batch = torch.sigmoid(pred_batch).squeeze(1)  # Remove channel dim: (batch_size, D, W)
-            
+
             predictions.extend([pred_batch[k] for k in range(pred_batch.shape[0])])
-        
+
         return torch.stack(predictions, dim=1)  # Shape: (D, H, W)
 
 
@@ -506,34 +506,34 @@ class TomoSlabPredictor:
         """
         D, H, W = slab_3d.shape
         predictions = []
-        
+
         # Process slices in batches
         for i in range(0, H, batch_size):
             end_idx = min(i + batch_size, H)
             batch_slices = []
-            
+
             for j in range(i, end_idx):
                 slice_2d = slab_3d[:, j, :]  # Shape: (D, W)
-                
+
                 # Apply robust normalization
                 slice_norm = robust_normalization(slice_2d)
-                
+
                 # Compute local variance
                 slice_var = local_variance_2d(slice_norm)
-                
+
                 # Create 2-channel input (normalized + variance)
                 two_channel_input = torch.stack([slice_norm, slice_var], dim=0)  # Shape: (2, D, W)
                 batch_slices.append(two_channel_input)
-            
+
             # Stack slices into batch
             batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 2, D, W)
-            
+
             # Process batch through model
             pred_batch = self.model(batch_tensor)
             pred_batch = torch.sigmoid(pred_batch).squeeze(1)  # Remove channel dim: (batch_size, D, W)
-            
+
             predictions.extend([pred_batch[k] for k in range(pred_batch.shape[0])])
-        
+
         return torch.stack(predictions, dim=1)  # Shape: (D, H, W)
 
     @torch.no_grad()
@@ -562,25 +562,25 @@ class TomoSlabPredictor:
         """
         if slab_size <= 1:
             return self._predict_single_axis(volume_3d, axis, batch_size)
-            
+
         logging.info(f"Predicting with slab blending along {axis} axis (slab_size={slab_size})...")
         num_slices = volume_3d.shape[1]
         final_slices = []
         hann_window = torch.hann_window(slab_size, periodic=False, device=self.device)
-        
+
         for i in tqdm(range(num_slices), desc=f"Slab Blending ({axis} axis)", leave=False, ncols=80):
             half_slab = slab_size // 2
             start = max(0, i - half_slab)
             end = min(num_slices, i + half_slab + 1)
-            
+
             # Extract and predict slab
             predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size, proc)
-            
+
             # Calculate window indices and apply blending
             win_start = max(0, half_slab - i)
             win_end = min(slab_size, half_slab + (num_slices - i))
             current_window = hann_window[win_start:win_end]
-            
+
             # Apply weighted averaging
             if current_window.sum() > 0:
                 final_slice = torch.einsum('dwh,d->wh', predicted_slab, current_window) / current_window.sum()
@@ -591,8 +591,8 @@ class TomoSlabPredictor:
                 slice_var = local_variance_2d(slice_norm)
                 two_channel_input = torch.stack([slice_norm, slice_var], dim=0).unsqueeze(0)  # Shape: (1, 2, D, W)
                 final_slice = torch.sigmoid(self.model(two_channel_input)).squeeze(0).squeeze(0)
-            
+
             final_slices.append(final_slice)
-        
+
         return torch.stack(final_slices, dim=1)
 
