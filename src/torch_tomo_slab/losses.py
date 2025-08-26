@@ -120,7 +120,7 @@ class BoundaryLoss(nn.Module):
         return self.boundary_weight_factor * mean_loss_boundary + mean_loss_region
 
 
-def def gradient2d_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def  gradient2d_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Computes the L1 loss between the gradients of the prediction and the target."""
     sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32, device=pred.device).view(1, 1, 3, 3)
     sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32, device=pred.device).view(1, 1, 3, 3)
