@@ -107,7 +107,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.Rotate(limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'], p=0.7, border_mode=0),
             A.Transpose(p=0.5),
             A.RandomBrightnessContrast(brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'], p=0.4),
-            A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
+            #A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
         ]
 
         if 'GAUSS_NOISE_STD_RANGE' in constants.AUGMENTATION_CONFIG:
@@ -140,6 +140,6 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
         # Validation: Pad to a consistent size, then center crop.
         transform_list = [
             A.PadIfNeeded(min_height=constants.AUGMENTATION_CONFIG['PAD_SIZE'], min_width=constants.AUGMENTATION_CONFIG['PAD_SIZE'], border_mode=0, p=1.0),
-            A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
+            #A.CenterCrop(height=constants.AUGMENTATION_CONFIG['CROP_SIZE'], width=constants.AUGMENTATION_CONFIG['CROP_SIZE'], p=1.0)
         ]
     return A.Compose(transform_list)
