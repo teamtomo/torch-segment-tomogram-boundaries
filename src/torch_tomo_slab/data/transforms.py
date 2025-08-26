@@ -121,7 +121,6 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
 
             # Intensity transforms (gentle)
             A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=0.4),
-            A.CLAHE(clip_limit=2.0, tile_grid_size=(4, 4), p=0.3),  # Enhances edges
 
             # EDGE-PRESERVING CoarseDropout with inpainting
             A.CoarseDropout(
