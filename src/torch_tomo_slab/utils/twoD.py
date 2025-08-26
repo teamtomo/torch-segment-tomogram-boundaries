@@ -46,7 +46,7 @@ def local_variance_2d(image: torch.Tensor) -> torch.Tensor:
         Local variance map of same size as input.
         Computed using kernel size from config.AUGMENTATION_CONFIG['LOCAL_VARIANCE_KERNEL_SIZE'].
     """
-    kernel_size = constants.AUGMENTATION_CONFIG['LOCAL_VARIANCE_KERNEL_SIZE']
+    kernel_size = constants.LOCAL_VARIANCE_KERNEL_SIZE
     image_float = image.unsqueeze(0).unsqueeze(0).float()
     kernel = torch.ones(1, 1, kernel_size, kernel_size, device=image.device) / (kernel_size ** 2)
     padding = kernel_size // 2
