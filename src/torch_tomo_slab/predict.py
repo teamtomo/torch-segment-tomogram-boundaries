@@ -397,8 +397,13 @@ class TomoSlabPredictor:
         # Apply slab blending using utility function
         if slab_size > 1:
             logging.info(f"Applying slab blending with slab_size={slab_size}...")
-            pred_xz = threeD.apply_slab_blending(pred_xz, slab_size, self.device, 'XZ')
-            pred_yz = threeD.apply_slab_blending(pred_yz, slab_size, self.device, 'YZ')
+            pred_xz = threeD.apply_slab_blending(pred_xz, slab_size, self.device, 'Y') # Blending along Y for XZ predictions
+            
+            # For YZ predictions, we want to blend along the X-axis (W).
+            # So, permute (D, H, W) to (D, W, H), blend along the new H (which is W), then permute back.
+            pred_yz_permuted = pred_yz.permute(0, 2, 1) # Shape becomes (D, W, H)
+            pred_yz_blended_permuted = threeD.apply_slab_blending(pred_yz_permuted, slab_size, self.device, 'X') # Blending along X for YZ predictions
+            pred_yz = pred_yz_blended_permuted.permute(0, 2, 1) # Shape back to (D, H, W)
 
         logging.info("Averaging final predictions from both axes.")
         prob_map_tensor = (pred_xz + pred_yz) / 2.0
