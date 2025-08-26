@@ -120,6 +120,57 @@ class BoundaryLoss(nn.Module):
         return self.boundary_weight_factor * mean_loss_boundary + mean_loss_region
 
 
+def def gradient2d_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """Computes the L1 loss between the gradients of the prediction and the target."""
+    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32, device=pred.device).view(1, 1, 3, 3)
+    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32, device=pred.device).view(1, 1, 3, 3)
+
+    pred_grad_x = F.conv2d(pred, sobel_x, padding=1)
+    pred_grad_y = F.conv2d(pred, sobel_y, padding=1)
+    target_grad_x = F.conv2d(target, sobel_x, padding=1)
+    target_grad_y = F.conv2d(target, sobel_y, padding=1)
+
+    return F.l1_loss(pred_grad_x, target_grad_x) + F.l1_loss(pred_grad_y, target_grad_y)
+
+
+class WeightedHuberWithGradientLoss(nn.Module):
+    """
+    A combined loss function that includes a weighted Huber loss and a 2D gradient loss.
+    """
+    def __init__(self, from_logits: bool = True, eps: float = 1.0, gradient_weight: float = 10.0):
+        super().__init__()
+        self.from_logits = from_logits
+        self.eps = eps
+        self.gradient_weight = gradient_weight
+        self.name = "WeightedHuberWithGradientLoss"
+
+    def forward(self, pred_logits: torch.Tensor, target: torch.Tensor, weight_map: Optional[torch.Tensor] = None) -> torch.Tensor:
+        if self.from_logits:
+            y_pred = torch.sigmoid(pred_logits)
+        else:
+            y_pred = pred_logits
+
+        y_true = target.float()
+
+        num_positive = torch.sum(y_true, dim=(1, 2, 3))
+        num_negative = (y_true.size(1) * y_true.size(2) * y_true.size(3)) - num_positive
+
+        positive_weights = (y_true.size(1) * y_true.size(2) * y_true.size(3)) / (num_positive + self.eps)
+        negative_weights = (y_true.size(1) * y_true.size(2) * y_true.size(3)) / (num_negative + self.eps)
+
+        positive_weights = positive_weights.view(y_true.shape[0], 1, 1, 1)
+        negative_weights = negative_weights.view(y_true.shape[0], 1, 1, 1)
+
+        importance_mask = torch.where(y_true > 0, positive_weights, 2 * negative_weights)
+
+        huber_loss = importance_mask * F.huber_loss(y_pred, y_true, reduction="none")
+        
+        grad_loss = self.gradient_weight * gradient2d_loss(y_pred, y_true)
+
+        loss = huber_loss.mean() + grad_loss
+        return loss
+
+
 class CombinedLoss(nn.Module):
     """
     Flexible multi-component loss function with weighted combination.
@@ -193,6 +244,7 @@ def get_loss_function(loss_config: dict) -> nn.Module:
         'weighted_bce': WeightedBCELoss(from_logits=from_logits, label_smoothing=label_smoothing),
         'boundary': BoundaryLoss(from_logits=from_logits),
         'dice': SMPLossWrapper(smp.losses.DiceLoss(mode='binary'), from_logits=from_logits),
+        'weighted_huber_with_gradient': WeightedHuberWithGradientLoss(from_logits=from_logits),
     }
 
     if '+' not in name:
