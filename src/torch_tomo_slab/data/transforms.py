@@ -54,18 +54,18 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 border_mode=cv2.BORDER_REFLECT_101
             ),
             
-            # === INTENSITY AUGMENTATIONS ===
-            A.RandomBrightnessContrast(
-                brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.2
-                contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.2
-                p=0.5
-            ),
-            
-            # Gamma correction variation
-            A.RandomGamma(
-                gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (80, 120)
-                p=0.3
-            ),
+            # # === INTENSITY AUGMENTATIONS ===
+            # A.RandomBrightnessContrast(
+            #     brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.2
+            #     contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.2
+            #     p=0.5
+            # ),
+            #
+            # # Gamma correction variation
+            # A.RandomGamma(
+            #     gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (80, 120)
+            #     p=0.3
+            # ),
             
             # === NOISE AND BLUR ===
             A.GaussNoise(
