@@ -8,7 +8,10 @@ import gc
 import logging
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from torch_tomo_slab.processing import TrainingDataGenerator
 
 import mrcfile
 import numpy as np
@@ -192,7 +195,7 @@ class TomoSlabPredictor:
         Target 3D shape for volume preprocessing.
     """
 
-    def __init__(self, model_checkpoint_path: Union[str, Path]) -> None:
+    def __init__(self, model_checkpoint_path: Union[str, Path], compile_model: bool = True) -> None:
         """
         Initialize predictor with trained model checkpoint.
 
@@ -200,6 +203,9 @@ class TomoSlabPredictor:
         ----------
         model_checkpoint_path : str or Path
             Path to the trained PyTorch Lightning model checkpoint (.ckpt file).
+        compile_model : bool, default=True
+            Whether to compile the model using torch.compile for faster inference.
+            Requires PyTorch 2.0+ and may increase initial load time.
 
         Raises
         ------
@@ -224,11 +230,85 @@ class TomoSlabPredictor:
             model=base_model, loss_function=loss_fn
         )
         self.model.eval().to(self.device)
+        
+        # Compile model for faster inference if requested and supported
+        if compile_model:
+            self._compile_model()
         # Load target shape from the model's saved hyperparameters
         self.target_shape_3d = self.model.hparams.get('target_shape')
         if not self.target_shape_3d:
             raise ValueError("`target_shape` not found in model checkpoint. Please retrain with the updated trainer.")
         logging.info(f"Using target shape from checkpoint for resizing: {self.target_shape_3d}")
+
+    def _compile_model(self) -> None:
+        """
+        Compile model using torch.compile for faster inference.
+        
+        Uses TorchDynamo and TorchInductor to optimize the model.
+        Falls back gracefully if compilation is not supported.
+        """
+        try:
+            # Check if torch.compile is available (PyTorch 2.0+)
+            if hasattr(torch, 'compile'):
+                logging.info("Compiling model for faster inference...")
+                
+                # Configure compilation options for optimal performance
+                compile_options = {
+                    'mode': 'max-autotune',  # Aggressive optimization
+                    'fullgraph': False,      # Allow graph breaks for compatibility
+                    'dynamic': False,        # Assume fixed input shapes for better optimization
+                }
+                
+                # Try different backends in order of preference
+                backends_to_try = ['inductor', 'aot_eager', 'eager']
+                
+                for backend in backends_to_try:
+                    try:
+                        compile_options['backend'] = backend
+                        self.model = torch.compile(self.model, **compile_options)
+                        logging.info(f"Model compiled successfully using '{backend}' backend")
+                        return
+                    except Exception as e:
+                        logging.warning(f"Failed to compile with '{backend}' backend: {e}")
+                        continue
+                
+                logging.warning("All compilation backends failed. Using uncompiled model.")
+            else:
+                logging.warning("torch.compile not available. Requires PyTorch 2.0+. Using uncompiled model.")
+                
+        except Exception as e:
+            logging.warning(f"Model compilation failed: {e}. Using uncompiled model.")
+
+    def warm_up_model(self, batch_size: int = 16) -> None:
+        """
+        Warm up compiled model with dummy inputs to trigger optimizations.
+        
+        Parameters
+        ----------
+        batch_size : int, default=16
+            Batch size for warm-up inference.
+        """
+        if hasattr(self.model, '_orig_mod'):  # Check if model is compiled
+            try:
+                logging.info("Warming up compiled model...")
+                
+                # Create dummy input matching expected model input shape
+                if hasattr(self.model, 'hparams') and self.target_shape_3d:
+                    D, H, W = self.target_shape_3d
+                    dummy_input = torch.randn(batch_size, 1, D, W, device=self.device)
+                    
+                    # Run a few warm-up iterations
+                    for _ in range(3):
+                        _ = self.model(dummy_input)
+                    
+                    logging.info("Model warm-up completed")
+                else:
+                    logging.warning("Could not determine input shape for warm-up")
+                    
+            except Exception as e:
+                logging.warning(f"Model warm-up failed: {e}")
+        else:
+            logging.info("Model not compiled, skipping warm-up")
 
     @torch.no_grad()
     def predict(self,
@@ -239,7 +319,8 @@ class TomoSlabPredictor:
                 batch_size: int = 16,
                 binarize_threshold: float = 0.5,
                 smoothing_sigma: Optional[float] = None,
-                downsample_grid_size: int = 8) -> np.ndarray:
+                downsample_grid_size: int = 8,
+                warm_up: bool = False) -> np.ndarray:
         """
         Execute full prediction pipeline on tomographic volume.
 
@@ -270,6 +351,8 @@ class TomoSlabPredictor:
             Standard deviation for 3D Gaussian smoothing filter. If None, no smoothing.
         downsample_grid_size : int, default=8
             Voxel grid size for downsampling point clouds before plane fitting.
+        warm_up : bool, default=False
+            Whether to warm up the compiled model before inference for optimal performance.
 
         Returns
         -------
@@ -294,6 +377,9 @@ class TomoSlabPredictor:
         original_shape = original_data_np.shape
         logging.info(f"Input tomogram shape: {original_shape}")
 
+        # Warm up compiled model if requested
+        if warm_up:
+            self.warm_up_model(batch_size)
         
         resized_volume = threeD.resize_and_pad_3d(torch.from_numpy(original_data_np),target_shape=self.target_shape_3d, mode='image').to(self.device)
 
@@ -301,17 +387,18 @@ class TomoSlabPredictor:
         pred_xz = self._predict_single_axis(resized_volume, 'XZ', batch_size)
         pred_yz = self._predict_single_axis(resized_volume.permute(0, 2, 1), 'YZ', batch_size).permute(0, 2, 1)
 
-        # Apply slab blending
+        # Apply slab blending using utility function
         if slab_size > 1:
-            pred_xz = self._apply_slab_blending(pred_xz, slab_size, 'XZ')
-            pred_yz = self._apply_slab_blending(pred_yz, slab_size, 'YZ')
+            logging.info(f"Applying slab blending with slab_size={slab_size}...")
+            pred_xz = threeD.apply_slab_blending(pred_xz, slab_size, self.device, 'XZ')
+            pred_yz = threeD.apply_slab_blending(pred_yz, slab_size, self.device, 'YZ')
 
         logging.info("Averaging final predictions from both axes.")
         prob_map_tensor = (pred_xz + pred_yz) / 2.0
 
         if smoothing_sigma and smoothing_sigma > 0:
             logging.info(f"Applying 3D Gaussian smoothing with sigma={smoothing_sigma}...")
-            prob_map_tensor = self._gpu_gaussian_blur_3d(prob_map_tensor, sigma=smoothing_sigma)
+            prob_map_tensor = threeD.gpu_gaussian_blur_3d(prob_map_tensor, smoothing_sigma, self.device)
 
         logging.info(f"Resizing prediction back to original shape {original_shape}...")
         prob_map_np = F.interpolate(prob_map_tensor.unsqueeze(0).unsqueeze(0), size=original_shape, mode='trilinear', align_corners=False).squeeze().cpu().numpy()
@@ -339,3 +426,147 @@ class TomoSlabPredictor:
         if torch.cuda.is_available(): torch.cuda.empty_cache()
         logging.info("Prediction complete.")
         return final_mask
+
+    @torch.no_grad()
+    def _predict_single_axis(self, volume_3d: torch.Tensor, axis: str, batch_size: int) -> torch.Tensor:
+        """
+        Predict boundary probabilities along single axis without slab blending.
+
+        Parameters
+        ----------
+        volume_3d : torch.Tensor
+            Input volume tensor of shape (D, H, W).
+        axis : str
+            Axis name for logging ('XZ' or 'YZ').
+        batch_size : int
+            Batch size for model inference.
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted probability volume of same shape as input.
+        """
+        logging.info(f"Predicting along {axis} axis...")
+        D, H, W = volume_3d.shape
+        predictions = []
+        
+        # Process slices in batches for efficiency
+        for i in tqdm(range(0, H, batch_size), desc=f"Processing {axis} axis", leave=False, ncols=80):
+            end_idx = min(i + batch_size, H)
+            batch_slices = []
+            
+            for j in range(i, end_idx):
+                slice_2d = volume_3d[:, j, :].unsqueeze(0)  # Shape: (1, D, W)
+                batch_slices.append(slice_2d)
+            
+            # Stack slices into batch
+            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 1, D, W)
+            
+            # Process batch through model
+            pred_batch = self.model(batch_tensor)
+            pred_batch = torch.sigmoid(pred_batch).squeeze(1)  # Remove channel dim: (batch_size, D, W)
+            
+            predictions.extend([pred_batch[k] for k in range(pred_batch.shape[0])])
+        
+        return torch.stack(predictions, dim=1)  # Shape: (D, H, W)
+
+
+    @torch.no_grad()
+    def _predict_raw_slab(self, slab_3d: torch.Tensor, batch_size: int, proc: 'TrainingDataGenerator') -> torch.Tensor:
+        """
+        Predict raw probabilities for a 3D slab using batched processing.
+
+        Parameters
+        ----------
+        slab_3d : torch.Tensor
+            Input 3D slab tensor of shape (D, H, W).
+        batch_size : int
+            Batch size for model inference.
+        proc : TrainingDataGenerator
+            Data processor instance (unused, kept for compatibility).
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted probability slab of same shape as input.
+        """
+        D, H, W = slab_3d.shape
+        predictions = []
+        
+        # Process slices in batches
+        for i in range(0, H, batch_size):
+            end_idx = min(i + batch_size, H)
+            batch_slices = []
+            
+            for j in range(i, end_idx):
+                slice_2d = slab_3d[:, j, :].unsqueeze(0)  # Shape: (1, D, W)
+                batch_slices.append(slice_2d)
+            
+            # Stack slices into batch
+            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 1, D, W)
+            
+            # Process batch through model
+            pred_batch = self.model(batch_tensor)
+            pred_batch = torch.sigmoid(pred_batch).squeeze(1)  # Remove channel dim: (batch_size, D, W)
+            
+            predictions.extend([pred_batch[k] for k in range(pred_batch.shape[0])])
+        
+        return torch.stack(predictions, dim=1)  # Shape: (D, H, W)
+
+    @torch.no_grad()
+    def _predict_single_axis_with_slab_blending_optimized(self, volume_3d: torch.Tensor, axis: str, slab_size: int, batch_size: int, proc: 'TrainingDataGenerator') -> torch.Tensor:
+        """
+        Optimized version of slab blending prediction combining both steps.
+        This method provides better memory efficiency for large volumes.
+
+        Parameters
+        ----------
+        volume_3d : torch.Tensor
+            Input volume tensor of shape (D, H, W).
+        axis : str
+            Axis name for logging ('XZ' or 'YZ').
+        slab_size : int
+            Size of temporal slab for blending adjacent slices.
+        batch_size : int
+            Batch size for model inference.
+        proc : TrainingDataGenerator
+            Data processor instance (unused, kept for compatibility).
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted probability volume of same shape as input.
+        """
+        if slab_size <= 1:
+            return self._predict_single_axis(volume_3d, axis, batch_size)
+            
+        logging.info(f"Predicting with slab blending along {axis} axis (slab_size={slab_size})...")
+        num_slices = volume_3d.shape[1]
+        final_slices = []
+        hann_window = torch.hann_window(slab_size, periodic=False, device=self.device)
+        
+        for i in tqdm(range(num_slices), desc=f"Slab Blending ({axis} axis)", leave=False, ncols=80):
+            half_slab = slab_size // 2
+            start = max(0, i - half_slab)
+            end = min(num_slices, i + half_slab + 1)
+            
+            # Extract and predict slab
+            predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size, proc)
+            
+            # Calculate window indices and apply blending
+            win_start = max(0, half_slab - i)
+            win_end = min(slab_size, half_slab + (num_slices - i))
+            current_window = hann_window[win_start:win_end]
+            
+            # Apply weighted averaging
+            if current_window.sum() > 0:
+                final_slice = torch.einsum('dwh,d->wh', predicted_slab, current_window) / current_window.sum()
+            else:
+                # Fallback: predict single slice
+                single_slice = volume_3d[:, i, :].unsqueeze(0).unsqueeze(0)
+                final_slice = torch.sigmoid(self.model(single_slice)).squeeze(0).squeeze(0)
+            
+            final_slices.append(final_slice)
+        
+        return torch.stack(final_slices, dim=1)
+
