@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy.ndimage import binary_erosion
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from torch_tomo_slab import config
 from torch_tomo_slab.losses import get_loss_function
@@ -320,6 +321,7 @@ class TomoSlabPredictor:
                 input_tomogram: Union[str, Path, np.ndarray],
                 output_path: Optional[Path] = None,
                 save_raw_mask_path: Optional[Path] = None,
+                save_orthogonal_views_path: Optional[Path] = None,
                 slab_size: int = 15,
                 batch_size: int = 16,
                 binarize_threshold: float = 0.5,
@@ -404,6 +406,23 @@ class TomoSlabPredictor:
         if smoothing_sigma and smoothing_sigma > 0:
             logging.info(f"Applying 3D Gaussian smoothing with sigma={smoothing_sigma}...")
             prob_map_tensor = threeD.gpu_gaussian_blur_3d(prob_map_tensor, smoothing_sigma, self.device)
+
+        if save_orthogonal_views_path:
+            logging.info(f"Saving orthogonal views to {save_orthogonal_views_path}")
+            save_orthogonal_views_path.mkdir(parents=True, exist_ok=True)
+            prob_map_np_before_resize = prob_map_tensor.cpu().numpy()
+            
+            # XY view
+            xy_slice = prob_map_np_before_resize[prob_map_np_before_resize.shape[0] // 2, :, :]
+            plt.imsave(save_orthogonal_views_path / "xy_view.png", xy_slice, cmap='gray')
+
+            # XZ view
+            xz_slice = prob_map_np_before_resize[:, prob_map_np_before_resize.shape[1] // 2, :]
+            plt.imsave(save_orthogonal_views_path / "xz_view.png", xz_slice, cmap='gray')
+
+            # YZ view
+            yz_slice = prob_map_np_before_resize[:, :, prob_map_np_before_resize.shape[2] // 2]
+            plt.imsave(save_orthogonal_views_path / "yz_view.png", yz_slice, cmap='gray')
 
         logging.info(f"Resizing prediction back to original shape {original_shape}...")
         prob_map_np = F.interpolate(prob_map_tensor.unsqueeze(0).unsqueeze(0), size=original_shape, mode='trilinear', align_corners=False).squeeze().cpu().numpy()
