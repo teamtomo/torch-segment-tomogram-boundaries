@@ -180,8 +180,7 @@ class TomoSlabTrainer:
             print("Using enhanced augmentations without cropping for consistent train/val pipeline")
         return SegmentationModel(
             model=base_model,
-            loss_function=loss_fn,
-            learning_rate=self.learning_rate,
+            loss_function=loss_fn, learning_rate=self.learning_rate,
             target_shape=constants.TARGET_VOLUME_SHAPE,
         )
 
