@@ -169,7 +169,8 @@ class TomoSlabTrainer:
             decoder_channels=self.decoder_channels,
             decoder_attention_type=self.decoder_attention_type,
             classes=self.classes, in_channels=self.in_channels,
-            activation=None
+            activation=None,
+            aux_params={'dropout':config.MODEL_CONFIG['dropout']}
         )
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:

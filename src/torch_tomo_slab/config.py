@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 1e-4
+LEARNING_RATE: float = 4e-4
 MAX_EPOCHS: int = 100
 PRECISION: str = 'bf16-mixed'
 WARMUP_EPOCHS: int = 5
@@ -59,7 +59,7 @@ NUM_WORKERS: int = 8
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
-EARLY_STOP_PATIENCE: int = 6       # Epochs of no improvement (after SWA) before stopping
+EARLY_STOP_PATIENCE: int = 4       # Epochs of no improvement (after SWA) before stopping
 EARLY_STOP_MIN_DELTA: float = 0.001   # Minimum change to be considered an improvement
 
 # --- FALLBACK: STANDARD CALLBACKS ---
