@@ -32,7 +32,12 @@ class SegmentationModel(pl.LightningModule):
     def _common_step(self, batch, batch_idx, stage: str):
         image, label, weight_map = batch['image'], batch['label'], batch['weight_map']
         batch_size = image.size(0)
-        pred_logits = self(image)
+        model_output = self(image)
+        # Handle both single output and tuple output (when using aux_params)
+        if isinstance(model_output, tuple):
+            pred_logits = model_output[0]  # Main segmentation output
+        else:
+            pred_logits = model_output
         loss = self.criterion(pred_logits, label, weight_map)
         self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage == 'train'), on_epoch=True, batch_size=batch_size,
                  sync_dist=True)
