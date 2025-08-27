@@ -261,7 +261,8 @@ class TomoSlabTrainer:
             callbacks=callbacks,
             strategy="ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
             gradient_clip_val=1.0,
-            gradient_clip_algorithm="norm"
+            gradient_clip_algorithm="norm",
+            enable_model_summary=True
         )
 
         if self.global_rank == 0:
