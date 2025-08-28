@@ -35,8 +35,8 @@ MODEL_CONFIG: dict[str, any] = {
     'decoder_channels': [256, 128, 64],
     'decoder_attention_type': 'scse',
     'classes': 1,
-    'in_channels': 2,
-    'dropout': 0.3,  # Add dropout to decoder layers
+    'in_channels': 1,
+    'dropout': 0.5,  # Add dropout to decoder layers
 }
 
 # --- Loss Function Configuration ---
@@ -60,7 +60,7 @@ USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 4       # Epochs of no improvement (after SWA) before stopping
-EARLY_STOP_MIN_DELTA: float = 0.001   # Minimum change to be considered an improvement
+EARLY_STOP_MIN_DELTA: float = 1e-4   # Minimum change to be considered an improvement
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6

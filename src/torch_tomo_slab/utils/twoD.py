@@ -31,25 +31,4 @@ def robust_normalization(data: torch.Tensor) -> torch.Tensor:
     if p95 - p5 < 1e-5: return data - torch.median(data)
     return (data - torch.median(data)) / (p95 - p5)
 
-def local_variance_2d(image: torch.Tensor) -> torch.Tensor:
-    """
-    Calculate local variance of 2D image using convolution.
 
-    Parameters
-    ----------
-    image : torch.Tensor
-        Input 2D image tensor.
-
-    Returns
-    -------
-    torch.Tensor
-        Local variance map of same size as input.
-        Computed using kernel size from config.AUGMENTATION_CONFIG['LOCAL_VARIANCE_KERNEL_SIZE'].
-    """
-    kernel_size = constants.LOCAL_VARIANCE_KERNEL_SIZE
-    image_float = image.unsqueeze(0).unsqueeze(0).float()
-    kernel = torch.ones(1, 1, kernel_size, kernel_size, device=image.device) / (kernel_size ** 2)
-    padding = kernel_size // 2
-    local_mean = F.conv2d(image_float, kernel, padding=padding)
-    local_mean_sq = F.conv2d(image_float ** 2, kernel, padding=padding)
-    return torch.clamp(local_mean_sq - local_mean ** 2, min=0).squeeze(0).squeeze(0)

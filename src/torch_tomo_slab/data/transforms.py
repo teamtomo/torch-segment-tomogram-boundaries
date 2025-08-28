@@ -1,8 +1,18 @@
 import albumentations as A
 import cv2
+import numpy as np
 
 from torch_tomo_slab import constants
 from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
+
+
+def scale_to_0_1(img, **kwargs):
+    """Scales a numpy array to the [0, 1] range."""
+    min_val = img.min()
+    max_val = img.max()
+    if max_val - min_val > 1e-6:
+        img = (img - min_val) / (max_val - min_val)
+    return img.astype(np.float32)
 
 
 class AddBoundaryWeightMap(A.ImageOnlyTransform):
@@ -27,6 +37,9 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
     if is_training:
         # Enhanced augmentations to combat overfitting without cropping
         transform_list = [
+            # Scale to [0, 1] for intensity transforms
+            A.Lambda(image=scale_to_0_1, name="scale_to_0_1", p=1.0),
+            
             # === SPATIAL AUGMENTATIONS ===
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
@@ -39,33 +52,25 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 interpolation=cv2.INTER_LINEAR
             ),
             
-            # Elastic deformation for shape variation
-            A.ElasticTransform(
-                alpha=constants.AUGMENTATION_CONFIG['ELASTIC_ALPHA'],    # 50
-                sigma=constants.AUGMENTATION_CONFIG['ELASTIC_SIGMA'],    # 5
-                p=0.4
-            ),
-            
-            # Grid distortion for local geometric variation
-            A.GridDistortion(
-                num_steps=5,
-                distort_limit=constants.AUGMENTATION_CONFIG['GRID_DISTORTION_LIMIT'],  # 0.2
-                p=0.3,
+            # Affine transform for scaling
+            A.Affine(
+                scale=(0.8, 1.2), 
+                p=0.5,
                 border_mode=cv2.BORDER_REFLECT_101
             ),
             
-            # # === INTENSITY AUGMENTATIONS ===
-            # A.RandomBrightnessContrast(
-            #     brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.2
-            #     contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.2
-            #     p=0.5
-            # ),
-            #
-            # # Gamma correction variation
-            # A.RandomGamma(
-            #     gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (80, 120)
-            #     p=0.3
-            # ),
+            # === INTENSITY AUGMENTATIONS ===
+            A.RandomBrightnessContrast(
+                brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.2
+                contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.2
+                p=0.5
+            ),
+            
+            # Gamma correction variation
+            A.RandomGamma(
+                gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (80, 120)
+                p=0.3
+            ),
             
             # === NOISE AND BLUR ===
             A.GaussNoise(

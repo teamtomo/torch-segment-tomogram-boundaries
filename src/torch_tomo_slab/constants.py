@@ -45,4 +45,3 @@ AUGMENTATION_CONFIG: dict[str, any] = {
     'GRID_DROPOUT_RATIO': 0.3,             # Grid dropout coverage
     'GRID_DROPOUT_UNIT_SIZE': (8, 16),     # Grid unit size range
 }
-LOCAL_VARIANCE_KERNEL_SIZE: int = 5

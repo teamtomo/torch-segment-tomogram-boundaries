@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from torch_tomo_slab import config, constants
 from torch_tomo_slab.utils.threeD import resize_and_pad_3d
-from torch_tomo_slab.utils.twoD import local_variance_2d, robust_normalization
+from torch_tomo_slab.utils.twoD import robust_normalization
 
 log = logging.getLogger(__name__)
 
@@ -185,11 +185,10 @@ class TrainingDataGenerator:
                             ortho_label = label_std[:, :, slice_idx]
 
                         ortho_img_norm = robust_normalization(ortho_img)
-                        ortho_img_var = local_variance_2d(ortho_img_norm)
-                        two_channel_input = torch.stack([ortho_img_norm, ortho_img_var], dim=0)
+                        single_channel_input = ortho_img_norm.unsqueeze(0)
 
                         save_path = output_dir / f"{output_dir.name}_{vol_file.stem}_view_{i}.pt"
-                        torch.save({'image': two_channel_input.cpu(), 'label': ortho_label.cpu().long()}, save_path)
+                        torch.save({'image': single_channel_input.cpu(), 'label': ortho_label.cpu().long()}, save_path)
 
                 except Exception as e:
                     log.error(f"Failed to process {vol_file.name}. Error: {e}", exc_info=True)
