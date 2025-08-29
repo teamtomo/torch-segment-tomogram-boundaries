@@ -31,12 +31,12 @@ MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
-    'encoder_depth': 5,
-    'decoder_channels': [256, 128, 64, 32,16],
-    'decoder_attention_type': 'scse',
+    'encoder_depth': 3,  # Reduced from 5 to 3 - much shallower network
+    'decoder_channels': [64, 32, 16],  # Drastically reduced channels - 75% reduction
+    'decoder_attention_type': None,  # Remove attention - too complex for small dataset
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.6,  # Heavy dropout due to severe overfitting
+    'dropout': 0.1,  # Even higher dropout for simplified architecture
 }
 
 # --- Loss Function Configuration ---
@@ -47,7 +47,8 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'gradient_weight': 10,  # Add label smoothing to reduce overconfidence
+        'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
+        'gradient_weight': 10,
     }
 }
 
@@ -58,9 +59,9 @@ NUM_WORKERS: int = 8
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.1                 # Lower for more stability (less responsive to noise)
-SWA_TRIGGER_PATIENCE: int = 4       # Reduced patience - stop overfitting sooner
-EARLY_STOP_PATIENCE: int = 3       # Aggressive early stopping to prevent overfitting
-EARLY_STOP_MIN_DELTA: float = 1e-3   # Higher threshold - only continue if significant improvement
+SWA_TRIGGER_PATIENCE: int = 3       # Ultra-aggressive - trigger SWA after 3 epochs of plateau
+EARLY_STOP_PATIENCE: int = 2       # Ultra-aggressive - stop after 2 epochs post-SWA
+EARLY_STOP_MIN_DELTA: float = 2e-3   # Very high threshold - require substantial improvement
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6
