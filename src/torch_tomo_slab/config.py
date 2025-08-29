@@ -44,7 +44,7 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'weighted_bce+weighted_huber_with_gradient',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
         'gradient_weight': 10,  # Add label smoothing to reduce overconfidence
@@ -89,7 +89,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "CosineAnnealingLR", 
     "params": {
-        "eta_min": 1e-7,
+        "eta_min": 1e-6,
     },
     "monitor": "val_dice"
 }
