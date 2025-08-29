@@ -32,8 +32,8 @@ MODEL_CONFIG: dict[str, any] = {
     'encoder_name': "resnet18",
     'encoder_weights': None,
     'encoder_depth': 3,  # Reduced from 5 to 3 - much shallower network
-    'decoder_channels': [64, 32, 16],  # Drastically reduced channels - 75% reduction
-    'decoder_attention_type': None,  # Remove attention - too complex for small dataset
+    'decoder_channels': [128, 64, 32],  # Increased decoder capacity for smoother segmentations
+    'decoder_attention_type': 'scse',  # SCSE attention for better skip connection utilization
     'classes': 1,
     'in_channels': 1,
     'dropout': 0.1,  # Even higher dropout for simplified architecture
@@ -91,7 +91,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "CosineAnnealingLR", 
     "params": {
-        "eta_min": 1e-6,  # Lower minimum to allow longer training
+        "eta_min": 5e-6,  # Higher floor to prevent numerical collapse at low LR
     },
     "monitor": "val_dice"
 }
