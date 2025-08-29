@@ -31,12 +31,12 @@ MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
-    'encoder_depth': 3,  # Reduced from 5 to 3 - much shallower network
-    'decoder_channels': [128, 64, 32],  # Increased decoder capacity for smoother segmentations
-    'decoder_attention_type': 'scse',  # SCSE attention for better skip connection utilization
+    'encoder_depth': 3,
+    'decoder_channels': [256, 128, 64],
+    'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.1,  # Even higher dropout for simplified architecture
+    'dropout': 0.1
 }
 
 # --- Loss Function Configuration ---
@@ -58,10 +58,10 @@ NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
-EMA_ALPHA: float = 0.1                 # Lower for more stability (less responsive to noise)
+EMA_ALPHA: float = 0.3                 # Lower for more stability (less responsive to noise)
 SWA_TRIGGER_PATIENCE: int = 3       # Ultra-aggressive - trigger SWA after 3 epochs of plateau
 EARLY_STOP_PATIENCE: int = 2       # Ultra-aggressive - stop after 2 epochs post-SWA
-EARLY_STOP_MIN_DELTA: float = 2e-3   # Very high threshold - require substantial improvement
+EARLY_STOP_MIN_DELTA: float = 5e-4
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6
@@ -89,9 +89,9 @@ OPTIMIZER_CONFIG: dict[str, any] = {
 # --- SCHEDULER ---
 USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
-    "name": "CosineAnnealingLR", 
+    "name": "ReduceLROnPlateau",
     "params": {
-        "eta_min": 5e-6,  # Higher floor to prevent numerical collapse at low LR
+        "patience":4  # Higher floor to prevent numerical collapse at low LR
     },
     "monitor": "val_dice"
 }
