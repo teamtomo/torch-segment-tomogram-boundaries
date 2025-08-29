@@ -22,7 +22,7 @@ VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
 LEARNING_RATE: float = 4e-4
-MAX_EPOCHS: int = 100
+MAX_EPOCHS: int = 50
 PRECISION: str = 'bf16-mixed'
 WARMUP_EPOCHS: int = 5
 
@@ -31,12 +31,12 @@ MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
     'encoder_name': "resnet18",
     'encoder_weights': None,
-    'encoder_depth': 3,
-    'decoder_channels': [256, 128, 64],
+    'encoder_depth': 5,
+    'decoder_channels': [256, 128, 64, 32,16],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.5,  # Add dropout to decoder layers
+    'dropout': 0.2,  # Add dropout to decoder layers
 }
 
 # --- Loss Function Configuration ---
@@ -57,7 +57,7 @@ NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
-EMA_ALPHA: float = 0.3                 # Smoothing factor for validation metric - increase for more stability
+EMA_ALPHA: float = 0.45                 # Smoothing factor for validation metric - increase for more stability
 SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
 EARLY_STOP_PATIENCE: int = 4       # Epochs of no improvement (after SWA) before stopping
 EARLY_STOP_MIN_DELTA: float = 1e-4   # Minimum change to be considered an improvement
