@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 4e-4
+LEARNING_RATE: float = 2e-4  # Reduced for stability
 MAX_EPOCHS: int = 50
 PRECISION: str = 'bf16-mixed'
 WARMUP_EPOCHS: int = 5
@@ -57,10 +57,10 @@ NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
-EMA_ALPHA: float = 0.45                 # Smoothing factor for validation metric - increase for more stability
-SWA_TRIGGER_PATIENCE: int = 6       # Epochs of plateau before starting SWA
-EARLY_STOP_PATIENCE: int = 4       # Epochs of no improvement (after SWA) before stopping
-EARLY_STOP_MIN_DELTA: float = 1e-4   # Minimum change to be considered an improvement
+EMA_ALPHA: float = 0.1                 # Lower for more stability (less responsive to noise)
+SWA_TRIGGER_PATIENCE: int = 8       # Longer patience for SWA trigger
+EARLY_STOP_PATIENCE: int = 6       # More patience after SWA
+EARLY_STOP_MIN_DELTA: float = 5e-4   # Larger threshold to avoid noise-triggered stops
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6
@@ -80,7 +80,8 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-4
+        "weight_decay": 1e-4,
+        "eps": 1e-7  # More stable epsilon for AdamW
     }
 }
 
@@ -89,7 +90,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "CosineAnnealingLR", 
     "params": {
-        "eta_min": 1e-6,
+        "eta_min": 5e-6,  # Higher minimum LR for stability
     },
     "monitor": "val_dice"
 }
