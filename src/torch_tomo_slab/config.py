@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 2e-4  # Reduced for stability
+LEARNING_RATE: float = 5e-5  # Much lower for dataset size
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 5
@@ -36,7 +36,7 @@ MODEL_CONFIG: dict[str, any] = {
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.4,  # Increased dropout for overfitting prevention
+    'dropout': 0.6,  # Heavy dropout due to severe overfitting
 }
 
 # --- Loss Function Configuration ---
@@ -52,7 +52,7 @@ LOSS_CONFIG: dict[str, any] = {
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 32
+BATCH_SIZE: int = 16
 NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
@@ -69,7 +69,7 @@ STANDARD_SWA_START_FRACTION: float = 0.75
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
 DEVICES: int = torch.cuda.device_count() if torch.cuda.is_available() else 1
-SWA_LEARNING_RATE: float = 0.1 * LEARNING_RATE # 10% of the main LR is a good starting point
+SWA_LEARNING_RATE: float = 0.05 * LEARNING_RATE # Lower SWA LR for stability
 
 # --- CHECKPOINTING ---
 CKPT_SAVE_PATH: Path = BASE_DATA_PATH/"checkpoints"
@@ -80,7 +80,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 5e-4,  # Increased weight decay for regularization
+        "weight_decay": 1e-3,  # Strong L2 regularization
         "eps": 1e-7  # More stable epsilon for AdamW
     }
 }
@@ -90,7 +90,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "CosineAnnealingLR", 
     "params": {
-        "eta_min": 5e-6,  # Higher minimum LR for stability
+        "eta_min": 1e-6,  # Lower minimum to allow longer training
     },
     "monitor": "val_dice"
 }
