@@ -23,7 +23,7 @@ VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 # --- TRAINING HYPERPARAMETERS ---
 LEARNING_RATE: float = 2e-4  # Reduced for stability
 MAX_EPOCHS: int = 50
-PRECISION: str = 'bf16-mixed'
+PRECISION: str = '32'
 WARMUP_EPOCHS: int = 5
 
 # --- MODEL ARCHITECTURE ---
@@ -36,7 +36,7 @@ MODEL_CONFIG: dict[str, any] = {
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.2,  # Add dropout to decoder layers
+    'dropout': 0.4,  # Increased dropout for overfitting prevention
 }
 
 # --- Loss Function Configuration ---
@@ -58,9 +58,9 @@ NUM_WORKERS: int = 8
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.1                 # Lower for more stability (less responsive to noise)
-SWA_TRIGGER_PATIENCE: int = 8       # Longer patience for SWA trigger
-EARLY_STOP_PATIENCE: int = 6       # More patience after SWA
-EARLY_STOP_MIN_DELTA: float = 5e-4   # Larger threshold to avoid noise-triggered stops
+SWA_TRIGGER_PATIENCE: int = 4       # Reduced patience - stop overfitting sooner
+EARLY_STOP_PATIENCE: int = 3       # Aggressive early stopping to prevent overfitting
+EARLY_STOP_MIN_DELTA: float = 1e-3   # Higher threshold - only continue if significant improvement
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6
@@ -80,7 +80,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-4,
+        "weight_decay": 5e-4,  # Increased weight decay for regularization
         "eps": 1e-7  # More stable epsilon for AdamW
     }
 }
