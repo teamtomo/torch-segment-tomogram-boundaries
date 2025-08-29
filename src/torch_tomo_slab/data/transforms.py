@@ -27,7 +27,13 @@ class AddBoundaryWeightMap(A.ImageOnlyTransform):
 
 def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
     """
-    Clean augmentation pipeline - no padding needed, no CLAHE for multi-channel.
+    Dimension-consistent augmentation pipeline for 256x512 tomography images.
+    
+    Key improvements:
+    - Guaranteed output dimensions via Resize + CenterCrop strategy
+    - Removed VerticalFlip (inappropriate for tomography orientation)  
+    - Conservative scaling to prevent dimension instability
+    - RandomCrop for natural zoom variation
     
     Args:
         is_training: If True, apply stochastic augmentations for regularization
@@ -35,46 +41,67 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
     """
     
     if is_training:
-        # Enhanced augmentations to combat overfitting without cropping
+        # Dimension-first augmentation strategy for training stability
         transform_list = [
-            # Scale to [0, 1] for intensity transforms
+            # === STEP 1: NORMALIZE ===
             A.Lambda(image=scale_to_0_1, name="scale_to_0_1", p=1.0),
             
-            # === SPATIAL AUGMENTATIONS ===
+            # === STEP 2: ESTABLISH CONSISTENT DIMENSIONS ===
+            # Resize with buffer then crop to guarantee exact output size
+            A.Resize(
+                height=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_HEIGHT'],  # 288
+                width=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_WIDTH'],    # 576
+                p=1.0
+            ),
+            A.CenterCrop(
+                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
+                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
+                p=1.0
+            ),
+            
+            # === STEP 3: SAFE SPATIAL AUGMENTATIONS ===
             A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
+            # REMOVED VerticalFlip - orientation matters in tomography
             
             # Conservative rotation for rectangular images
             A.Rotate(
-                limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],  # 10 degrees
-                p=0.4,
+                limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],  # 8 degrees
+                p=0.3,  # Reduced probability
                 border_mode=cv2.BORDER_REFLECT_101,
                 interpolation=cv2.INTER_LINEAR
             ),
             
-            # Affine transform for scaling
+            # === STEP 4: CONTROLLED SCALE VARIATION ===
+            # RandomCrop provides natural zoom variation
+            A.RandomCrop(
+                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
+                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
+                p=0.4
+            ),
+            
+            # Conservative affine scaling (reduced from 0.8-1.2 to 0.95-1.05)
             A.Affine(
-                scale=(0.8, 1.2), 
-                p=0.5,
+                scale=constants.AUGMENTATION_CONFIG['AFFINE_SCALE_RANGE'],      # (0.95, 1.05)
+                p=0.3,  # Reduced probability
                 border_mode=cv2.BORDER_REFLECT_101
             ),
             
-            # === INTENSITY AUGMENTATIONS ===
+            # === STEP 5: INTENSITY AUGMENTATIONS ===
             A.RandomBrightnessContrast(
-                brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.2
-                contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.2
-                p=0.5
+                brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.1
+                contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.1
+                p=0.4  # Reduced probability
             ),
             
             # Gamma correction variation
             A.RandomGamma(
-                gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (80, 120)
+                gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (90, 110)
                 p=0.3
             ),
             
-            # === NOISE AND BLUR ===
+            # === STEP 6: NOISE AND BLUR ===
             A.GaussNoise(
-                var_limit=constants.AUGMENTATION_CONFIG['NOISE_VAR_LIMIT'],  # (10, 30)
+                var_limit=constants.AUGMENTATION_CONFIG['NOISE_VAR_LIMIT'],  # (5, 15)
                 p=0.25
             ),
             
@@ -83,7 +110,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 p=0.2
             ),
             
-            # === OCCLUSION/DROPOUT ===
+            # === STEP 7: OCCLUSION/DROPOUT (KEEP PROVEN EFFECTIVE) ===
             # Coarse dropout - larger holes to force learning robust features
             A.CoarseDropout(
                 num_holes_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_HOLES'],  # (3, 8)
@@ -101,7 +128,19 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             ),
         ]
     else:
-        # Validation: No augmentations - clean data only
-        transform_list = []
+        # Validation: Apply same dimensional preprocessing for consistency
+        transform_list = [
+            A.Lambda(image=scale_to_0_1, name="scale_to_0_1", p=1.0),
+            A.Resize(
+                height=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_HEIGHT'],  # 288
+                width=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_WIDTH'],    # 576
+                p=1.0
+            ),
+            A.CenterCrop(
+                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
+                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
+                p=1.0
+            ),
+        ]
     
     return A.Compose(transform_list)

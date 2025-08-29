@@ -25,21 +25,27 @@ USE_SWA: bool = True
 
 # --- AUGMENTATION PARAMETERS ---
 AUGMENTATION_CONFIG: dict[str, any] = {
-    # Geometric augmentation parameters
-    'ROTATE_LIMIT': 20,              # Moderate rotation for rectangular images
-    'ELASTIC_ALPHA': 4,             # Stronger elastic deformation
-    'ELASTIC_SIGMA': 2,              # Smoothness parameter
-    'GRID_DISTORTION_LIMIT': 0.1,   # Grid distortion strength
+    # Dimensional consistency parameters (NEW - for training stability)
+    'RESIZE_BUFFER_HEIGHT': 288,       # 12.5% larger than target (256 * 1.125)
+    'RESIZE_BUFFER_WIDTH': 576,        # 12.5% larger than target (512 * 1.125) 
+    'TARGET_HEIGHT': 256,              # Final crop height (guarantees consistent output)
+    'TARGET_WIDTH': 512,               # Final crop width (guarantees consistent output)
     
-    # Intensity augmentation parameters  
-    'BRIGHTNESS_CONTRAST_LIMIT': 0.1,  # More aggressive intensity changes
-    'GAMMA_LIMIT': (80, 120),          # Gamma variation range
-    'NOISE_VAR_LIMIT': (5, 10),       # Gaussian noise strength
-    'BLUR_LIMIT': 3,                   # Gaussian blur kernel limit
+    # Geometric augmentation parameters (UPDATED - more conservative)
+    'ROTATE_LIMIT': 8,                 # Reduced from 20 to 8 degrees for stability
+    'AFFINE_SCALE_RANGE': (0.95, 1.05), # Conservative scaling (was aggressive 0.8-1.2)
+    'ELASTIC_ALPHA': 4,                # Stronger elastic deformation (UNUSED in new pipeline)
+    'ELASTIC_SIGMA': 2,                # Smoothness parameter (UNUSED in new pipeline)
+    'GRID_DISTORTION_LIMIT': 0.1,     # Grid distortion strength (UNUSED in new pipeline)
     
-    # Dropout/occlusion parameters
+    # Intensity augmentation parameters (UPDATED - more conservative)
+    'BRIGHTNESS_CONTRAST_LIMIT': 0.1,  # Reduced from 0.2 for stability
+    'GAMMA_LIMIT': (90, 110),          # Tightened from (80, 120) for realism
+    'NOISE_VAR_LIMIT': (5, 15),        # Reduced from (5, 10) for cleaner augmentations
+    'BLUR_LIMIT': 3,                   # Gaussian blur kernel limit (unchanged)
+    
+    # Dropout/occlusion parameters (UNCHANGED - proven effective)
     'COARSE_DROPOUT_HOLES': (3, 8),        # Number of holes range
     'COARSE_DROPOUT_SIZE': (0.03, 0.08),   # Hole size range
     'GRID_DROPOUT_RATIO': 0.3,             # Grid dropout coverage
-    'GRID_DROPOUT_UNIT_SIZE': (3, 8),     # Grid unit size range
 }
