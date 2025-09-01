@@ -100,10 +100,10 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             ),
             
             # === STEP 6: NOISE AND BLUR ===
-            A.GaussNoise(
-                var_limit=constants.AUGMENTATION_CONFIG['NOISE_VAR_LIMIT'],  # (5, 15)
-                p=0.25
-            ),
+            #A.GaussNoise(
+            #    var_limit=constants.AUGMENTATION_CONFIG['NOISE_VAR_LIMIT'],  # (5, 15)
+            #    p=0.25
+            #),
             
             A.GaussianBlur(
                 blur_limit=constants.AUGMENTATION_CONFIG['BLUR_LIMIT'],  # 3

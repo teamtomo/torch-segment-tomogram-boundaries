@@ -32,7 +32,7 @@ MODEL_CONFIG: dict[str, any] = {
     'encoder_name': "resnet18",
     'encoder_weights': None,
     'encoder_depth': 3,
-    'decoder_channels': [256, 128, 64],
+    'decoder_channels': [512, 256, 128],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
@@ -47,13 +47,13 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
+        'label_smoothing': 0.3,  # Add label smoothing to reduce overconfidence
         'gradient_weight': 10,
     }
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 16
+BATCH_SIZE: int = 8
 NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---

@@ -39,7 +39,7 @@ AUGMENTATION_CONFIG: dict[str, any] = {
     'GRID_DISTORTION_LIMIT': 0.1,     # Grid distortion strength (UNUSED in new pipeline)
     
     # Intensity augmentation parameters (UPDATED - more conservative)
-    'BRIGHTNESS_CONTRAST_LIMIT': 0.1,  # Reduced from 0.2 for stability
+    'BRIGHTNESS_CONTRAST_LIMIT': 0.2,  
     'GAMMA_LIMIT': (90, 110),          # Tightened from (80, 120) for realism
     'NOISE_VAR_LIMIT': (5, 15),        # Reduced from (5, 10) for cleaner augmentations
     'BLUR_LIMIT': 3,                   # Gaussian blur kernel limit (unchanged)
