@@ -68,6 +68,10 @@ dev = [
     "ruff",
     "pytest-mock"
 ]
+optuna = [
+    "optuna>=3.0.0",
+    "optuna-integration[pytorch-lightning]>=3.0.0"
+]
 
 [tool.uv.sources]
 torch-tomo-slab = { workspace = true }

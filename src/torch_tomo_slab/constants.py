@@ -14,7 +14,7 @@ FINAL_CROP_SIZE = 512
 TARGET_VOLUME_SHAPE = (256, 512, 512)
 
 # Number of 2D slices to extract from each 3D volume in script 02
-NUM_SECTIONS_PER_VOLUME = 256
+NUM_SECTIONS_PER_VOLUME = 400
 
 MODEL_ENCODER = MODEL_CONFIG['encoder_name']
 MONITOR_METRIC: str = "val_dice"
@@ -32,20 +32,17 @@ AUGMENTATION_CONFIG: dict[str, any] = {
     'TARGET_WIDTH': 512,               # Final crop width (guarantees consistent output)
     
     # Geometric augmentation parameters (UPDATED - more conservative)
-    'ROTATE_LIMIT': 8,                 # Reduced from 20 to 8 degrees for stability
+    'ROTATE_LIMIT': 20,                 # Reduced from 20 to 8 degrees for stability
     'AFFINE_SCALE_RANGE': (0.95, 1.05), # Conservative scaling (was aggressive 0.8-1.2)
-    'ELASTIC_ALPHA': 4,                # Stronger elastic deformation (UNUSED in new pipeline)
-    'ELASTIC_SIGMA': 2,                # Smoothness parameter (UNUSED in new pipeline)
-    'GRID_DISTORTION_LIMIT': 0.1,     # Grid distortion strength (UNUSED in new pipeline)
     
     # Intensity augmentation parameters (UPDATED - more conservative)
     'BRIGHTNESS_CONTRAST_LIMIT': 0.2,  
-    'GAMMA_LIMIT': (90, 110),          # Tightened from (80, 120) for realism
+    'GAMMA_LIMIT': (50, 70),
     'NOISE_VAR_LIMIT': (5, 15),        # Reduced from (5, 10) for cleaner augmentations
     'BLUR_LIMIT': 3,                   # Gaussian blur kernel limit (unchanged)
     
     # Dropout/occlusion parameters (UNCHANGED - proven effective)
     'COARSE_DROPOUT_HOLES': (3, 8),        # Number of holes range
     'COARSE_DROPOUT_SIZE': (0.03, 0.08),   # Hole size range
-    'GRID_DROPOUT_RATIO': 0.3,             # Grid dropout coverage
+    'GRID_DROPOUT_RATIO': 0.1,             # Grid dropout coverage
 }
