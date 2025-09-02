@@ -248,7 +248,7 @@ class TomoSlabTrainer:
         experiment_details = f"loss-{self.loss_config['name'].replace('+', '_')}"
         logger = TensorBoardLogger(
             save_dir=self.ckpt_save_dir,
-            name=f"{experiment_name}/{experiment_details}"
+            name=f"{experiment_name}--{experiment_details}"
         )
 
         callbacks = self._setup_callbacks()
