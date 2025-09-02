@@ -25,6 +25,7 @@ Usage (Parallel on Multi-GPU):
 import os
 import sys
 import argparse
+import traceback
 from pathlib import Path
 
 import optuna
@@ -64,8 +65,14 @@ def objective(trial: optuna.Trial) -> float:
 
     metric = 0.0
     try:
+        print("-"*80)
+        print(f"Starting Trial {trial.number}")
+        print(f"  - BASE_DATA_PATH: {config.BASE_DATA_PATH}")
+        print(f"  - CKPT_SAVE_PATH: {config.CKPT_SAVE_PATH}")
+        
         # Each trial gets its own checkpoint directory
         ckpt_dir = config.CKPT_SAVE_PATH / f"trial_{trial.number}"
+        print(f"  - This trial's ckpt_dir: {ckpt_dir}")
         ckpt_dir.mkdir(exist_ok=True, parents=True)
 
         trainer = TomoSlabTrainer(
@@ -99,8 +106,9 @@ def objective(trial: optuna.Trial) -> float:
     except optuna.exceptions.TrialPruned as e:
         print(f"Trial {trial.number} pruned.")
         raise e
-    except Exception as e:
-        print(f"Trial {trial.number} failed with exception: {e}")
+    except Exception:
+        print(f"Trial {trial.number} failed with a detailed traceback:")
+        traceback.print_exc()
         return 0.0  # Report failure to Optuna
 
     return metric
