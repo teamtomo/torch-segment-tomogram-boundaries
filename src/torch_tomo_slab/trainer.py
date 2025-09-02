@@ -223,7 +223,7 @@ class TomoSlabTrainer:
             callbacks.append(StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start))
         return callbacks
 
-    def fit(self) -> None:
+    def fit(self, extra_callbacks: Optional[List[pl.Callback]] = None) -> None:
         """
         Execute the complete training pipeline.
 
@@ -252,6 +252,8 @@ class TomoSlabTrainer:
         )
 
         callbacks = self._setup_callbacks()
+        if extra_callbacks:
+            callbacks.extend(extra_callbacks)
 
         self.trainer = pl.Trainer(
             max_epochs=config.MAX_EPOCHS, accelerator=config.ACCELERATOR, devices=config.DEVICES,

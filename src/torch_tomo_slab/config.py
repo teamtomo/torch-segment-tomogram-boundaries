@@ -15,7 +15,7 @@ BASE_DATA_PATH = Path(os.environ.get("TORCH_TOMO_SLAB_DATA", "data/"))
 TOMOGRAM_DIR: Path = BASE_DATA_PATH / "data_in" / "volumes"
 
 # Output data directories from scripts
-MASKS_DIR: Path = BASE_DATA_PATH / "data_in" / "boundary_mask_voumes"
+MASKS_DIR: Path = BASE_DATA_PATH / "data_in" / "boundary_mask_volumes"
 PREPARED_DATA_BASE_DIR: Path = BASE_DATA_PATH / "prepared_data"
 TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
@@ -59,8 +59,8 @@ NUM_WORKERS: int = 8
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Lower for more stability (less responsive to noise)
-SWA_TRIGGER_PATIENCE: int = 3       # Ultra-aggressive - trigger SWA after 3 epochs of plateau
-EARLY_STOP_PATIENCE: int = 2       # Ultra-aggressive - stop after 2 epochs post-SWA
+SWA_TRIGGER_PATIENCE: int = 5       # Ultra-aggressive - trigger SWA after 5 epochs of plateau
+EARLY_STOP_PATIENCE: int = 5       # Ultra-aggressive - stop after 5 epochs post-SWA
 EARLY_STOP_MIN_DELTA: float = 5e-4
 
 # --- FALLBACK: STANDARD CALLBACKS ---
