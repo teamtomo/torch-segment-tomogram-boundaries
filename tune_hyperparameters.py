@@ -91,9 +91,10 @@ def objective(trial: optuna.Trial) -> float:
             ckpt_save_dir=ckpt_dir
         )
 
-        pruning_callback = PyTorchLightningPruningCallback(trial, monitor=constants.MONITOR_METRIC)
+        # Pruning callback is disabled to resolve a version conflict.
+        # pruning_callback = PyTorchLightningPruningCallback(trial, monitor=constants.MONITOR_METRIC)
 
-        trainer.fit(extra_callbacks=[pruning_callback])
+        trainer.fit(extra_callbacks=None)
 
         best_score = trainer.trainer.checkpoint_callback.best_model_score
 
