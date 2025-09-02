@@ -24,15 +24,15 @@ VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 LEARNING_RATE: float = 5e-5  # Much lower for dataset size
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
-WARMUP_EPOCHS: int = 5
+WARMUP_EPOCHS: int = 0
 
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
-    'encoder_name': "resnet18",
+    'encoder_name': "resnet34",
     'encoder_weights': None,
-    'encoder_depth': 3,
-    'decoder_channels': [512, 256, 128],
+    'encoder_depth': 5,
+    'decoder_channels': [256,128,64,32,16],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
@@ -44,16 +44,16 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'name': 'weighted_bce+weighted_huber_with_gradient',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.3,  # Add label smoothing to reduce overconfidence
+        'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
         'gradient_weight': 10,
     }
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 8
+BATCH_SIZE: int = 16
 NUM_WORKERS: int = 8
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
