@@ -162,6 +162,10 @@ def objective(trial: optuna.Trial,
     output_val_dir = trial_dir / "val"
     ckpt_save_dir = trial_dir / "checkpoints"
     
+    # Set environment variable to force single GPU training during Optuna
+    import os
+    os.environ['OPTUNA_TRIAL'] = '1'
+    
     # Initialize variables that might be used in exception handler
     original_config = {}
     original_batch_size = config.BATCH_SIZE

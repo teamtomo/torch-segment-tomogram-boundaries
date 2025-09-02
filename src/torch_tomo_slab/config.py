@@ -69,7 +69,8 @@ STANDARD_SWA_START_FRACTION: float = 0.75
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
-DEVICES: int = torch.cuda.device_count() if torch.cuda.is_available() else 1
+# Force single GPU for Optuna trials to avoid distributed training issues
+DEVICES: int = 1 if os.environ.get('OPTUNA_TRIAL') else (torch.cuda.device_count() if torch.cuda.is_available() else 1)
 SWA_LEARNING_RATE: float = 0.05 * LEARNING_RATE # Lower SWA LR for stability
 
 # --- CHECKPOINTING ---
