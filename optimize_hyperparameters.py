@@ -101,10 +101,14 @@ def suggest_hyperparameters(trial: optuna.Trial) -> Dict[str, Any]:
     # Dropout rate optimization
     dropout = trial.suggest_float('dropout', 0.0, 0.5)
     
+    # Set encoder_depth to match decoder_channels length
+    encoder_depth = len(decoder_channels)
+    
     return {
         'learning_rate': learning_rate,
         'batch_size': batch_size,
         'decoder_channels': decoder_channels,
+        'encoder_depth': encoder_depth,  # CRITICAL: Must match decoder_channels length
         'weight_decay': weight_decay,
         'dropout': dropout
     }
@@ -126,6 +130,7 @@ def create_config_with_hyperparameters(hyperparams: Dict[str, Any]) -> Dict[str,
     # Create a copy of the base model config
     model_config = config.MODEL_CONFIG.copy()
     model_config['decoder_channels'] = hyperparams['decoder_channels']
+    model_config['encoder_depth'] = hyperparams['encoder_depth']  # CRITICAL: Update encoder_depth too
     model_config['dropout'] = hyperparams['dropout']
     
     # Create optimizer config with suggested learning rate and weight decay
