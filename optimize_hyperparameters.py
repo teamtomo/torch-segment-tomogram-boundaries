@@ -295,7 +295,7 @@ def main():
                         default="/home/pranav/data/training/torch-tomo-slab/data_in/volumes",
                         help='Directory containing tomogram volumes')
     parser.add_argument('--mask-dir', type=str,
-                        default="/home/pranav/data/training/torch-tomo-slab/data_in/boundary_mask_voumes", 
+                        default="/home/pranav/data/training/torch-tomo-slab/data_in/boundary_mask_volumes",
                         help='Directory containing mask volumes')
     parser.add_argument('--output-dir', type=str,
                         default="/home/pranav/data/training/torch-tomo-slab/optuna_trials",
