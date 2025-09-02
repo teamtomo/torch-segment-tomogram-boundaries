@@ -253,7 +253,7 @@ class TomoSlabTrainer:
 
         callbacks = self._setup_callbacks()
 
-        trainer = pl.Trainer(
+        self.trainer = pl.Trainer(
             max_epochs=config.MAX_EPOCHS, accelerator=config.ACCELERATOR, devices=config.DEVICES,
             precision=config.PRECISION, log_every_n_steps=constants.LOG_EVERY_N_STEPS,
             check_val_every_n_epoch=constants.CHECK_VAL_EVERY_N_EPOCH,
@@ -269,9 +269,9 @@ class TomoSlabTrainer:
             print("\n--- Starting Training ---")
             print(f"To view logs, run: tensorboard --logdir={logger.save_dir}")
 
-        trainer.fit(pl_model, datamodule=datamodule)
+        self.trainer.fit(pl_model, datamodule=datamodule)
 
-        if trainer.is_global_zero:
+        if self.trainer.is_global_zero:
             print("--- Training Finished ---")
-            if hasattr(trainer.checkpoint_callback, 'best_model_path') and trainer.checkpoint_callback is not None:
-                print(f"Best model checkpoint saved at: {trainer.checkpoint_callback.best_model_path}")
+            if hasattr(self.trainer.checkpoint_callback, 'best_model_path') and self.trainer.checkpoint_callback is not None:
+                print(f"Best model checkpoint saved at: {self.trainer.checkpoint_callback.best_model_path}")

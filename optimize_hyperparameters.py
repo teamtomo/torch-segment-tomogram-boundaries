@@ -249,10 +249,16 @@ def objective(trial: optuna.Trial,
             ckpt_save_dir=str(ckpt_save_dir)
         )
         
-        # Add Optuna pruning callback
+        # Add Optuna pruning callback by modifying the trainer's setup method
         pruning_callback = PyTorchLightningPruningCallback(trial, monitor="val_dice")
-        if hasattr(trainer, 'callbacks'):
-            trainer.callbacks.append(pruning_callback)
+        
+        # Monkey patch the _setup_callbacks method to add pruning callback
+        original_setup_callbacks = trainer._setup_callbacks
+        def setup_callbacks_with_pruning():
+            callbacks = original_setup_callbacks()
+            callbacks.append(pruning_callback)
+            return callbacks
+        trainer._setup_callbacks = setup_callbacks_with_pruning
         
         # Train the model
         result = trainer.fit()
@@ -394,11 +400,18 @@ def main():
     
     # Print results
     logging.info("Optimization completed!")
-    logging.info(f"Best trial: {study.best_trial.number}")
-    logging.info(f"Best value (val_dice): {study.best_value}")
-    logging.info("Best parameters:")
-    for key, value in study.best_params.items():
-        logging.info(f"  {key}: {value}")
+    
+    # Check if any trials completed successfully
+    successful_trials = [trial for trial in study.trials if trial.value is not None]
+    
+    if successful_trials:
+        logging.info(f"Best trial: {study.best_trial.number}")
+        logging.info(f"Best value (val_dice): {study.best_value}")
+        logging.info("Best parameters:")
+        for key, value in study.best_params.items():
+            logging.info(f"  {key}: {value}")
+    else:
+        logging.warning("No trials completed successfully! Check your configuration and logs.")
     
     # Save results
     results_file = output_dir / f"{args.study_name}_results.txt"
@@ -406,16 +419,23 @@ def main():
         f.write(f"Hyperparameter Optimization Results\n")
         f.write(f"Study: {args.study_name}\n")
         f.write(f"Total trials: {len(study.trials)}\n")
-        f.write(f"Best trial: {study.best_trial.number}\n")
-        f.write(f"Best validation dice: {study.best_value}\n\n")
-        f.write(f"Best hyperparameters:\n")
-        for key, value in study.best_params.items():
-            f.write(f"  {key}: {value}\n")
+        f.write(f"Successful trials: {len(successful_trials)}\n")
+        
+        if successful_trials:
+            f.write(f"Best trial: {study.best_trial.number}\n")
+            f.write(f"Best validation dice: {study.best_value}\n\n")
+            f.write(f"Best hyperparameters:\n")
+            for key, value in study.best_params.items():
+                f.write(f"  {key}: {value}\n")
+        else:
+            f.write("No trials completed successfully.\n\n")
         
         f.write(f"\nAll trials:\n")
         for trial in study.trials:
             if trial.value is not None:
                 f.write(f"Trial {trial.number}: {trial.value:.4f} - {trial.params}\n")
+            else:
+                f.write(f"Trial {trial.number}: FAILED - {trial.params}\n")
     
     logging.info(f"Results saved to {results_file}")
 
