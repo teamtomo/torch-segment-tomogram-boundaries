@@ -130,7 +130,9 @@ def create_config_with_hyperparameters(hyperparams: Dict[str, Any]) -> Dict[str,
 def objective(trial: optuna.Trial, 
               tomo_dir: str, 
               mask_vol_dir: str, 
-              base_output_dir: str) -> float:
+              base_output_dir: str,
+              shared_train_dir: str = None,
+              shared_val_dir: str = None) -> float:
     """Objective function for Optuna optimization.
     
     Parameters
@@ -173,23 +175,32 @@ def objective(trial: optuna.Trial,
     original_max_epochs = config.MAX_EPOCHS
     
     try:
-        # Check if training data already exists
-        train_exists = output_train_dir.exists() and len(list(output_train_dir.glob('*'))) > 0
-        val_exists = output_val_dir.exists() and len(list(output_val_dir.glob('*'))) > 0
-        
-        if not (train_exists and val_exists):
-            logging.info(f"Trial {trial.number}: Preparing training data...")
-            
-            generator = TrainingDataGenerator(
-                volume_dir=tomo_dir,
-                mask_dir=mask_vol_dir,
-                output_train_dir=output_train_dir,
-                output_val_dir=output_val_dir
-            )
-            generator.run()
-            logging.info(f"Trial {trial.number}: Data preparation complete")
+        # Use shared dataset if provided, otherwise create trial-specific
+        if shared_train_dir and shared_val_dir:
+            train_data_dir = shared_train_dir
+            val_data_dir = shared_val_dir
+            logging.info(f"Trial {trial.number}: Using shared training data")
         else:
-            logging.info(f"Trial {trial.number}: Using existing training data")
+            # Fallback to old behavior for backward compatibility
+            train_exists = output_train_dir.exists() and len(list(output_train_dir.glob('*'))) > 0
+            val_exists = output_val_dir.exists() and len(list(output_val_dir.glob('*'))) > 0
+            
+            if not (train_exists and val_exists):
+                logging.info(f"Trial {trial.number}: Preparing training data...")
+                
+                generator = TrainingDataGenerator(
+                    volume_dir=tomo_dir,
+                    mask_dir=mask_vol_dir,
+                    output_train_dir=output_train_dir,
+                    output_val_dir=output_val_dir
+                )
+                generator.run()
+                logging.info(f"Trial {trial.number}: Data preparation complete")
+            else:
+                logging.info(f"Trial {trial.number}: Using existing training data")
+            
+            train_data_dir = str(output_train_dir)
+            val_data_dir = str(output_val_dir)
         
         # Create configuration with suggested hyperparameters
         trial_config = create_config_with_hyperparameters(hyperparams)
@@ -213,8 +224,8 @@ def objective(trial: optuna.Trial,
         
         # Create trainer with trial-specific configuration
         trainer = TomoSlabTrainer(
-            train_data_dir=str(output_train_dir),
-            val_data_dir=str(output_val_dir),
+            train_data_dir=train_data_dir,
+            val_data_dir=val_data_dir,
             ckpt_save_dir=str(ckpt_save_dir)
         )
         
@@ -326,13 +337,38 @@ def main():
             load_if_exists=True
         )
     
-    # Define objective function with fixed arguments
-    def objective_with_args(trial):
-        return objective(trial, args.tomo_dir, args.mask_dir, args.output_dir)
+    # Create shared training dataset once before all trials
+    shared_data_dir = output_dir / "shared_data"
+    shared_train_dir = shared_data_dir / "train"
+    shared_val_dir = shared_data_dir / "val"
     
-    # Run optimization
+    # Check if shared data already exists
+    train_exists = shared_train_dir.exists() and len(list(shared_train_dir.glob('*'))) > 0
+    val_exists = shared_val_dir.exists() and len(list(shared_val_dir.glob('*'))) > 0
+    
+    if not (train_exists and val_exists):
+        logging.info("Creating shared training dataset for all trials...")
+        shared_data_dir.mkdir(parents=True, exist_ok=True)
+        
+        generator = TrainingDataGenerator(
+            volume_dir=args.tomo_dir,
+            mask_dir=args.mask_dir,
+            output_train_dir=shared_train_dir,
+            output_val_dir=shared_val_dir
+        )
+        generator.run()
+        logging.info("Shared dataset creation complete")
+    else:
+        logging.info("Using existing shared training dataset")
+    
+    # Define objective function with fixed arguments and shared data
+    def objective_with_args(trial):
+        return objective(trial, args.tomo_dir, args.mask_dir, args.output_dir,
+                        str(shared_train_dir), str(shared_val_dir))
+    
+    # Run optimization with sequential execution (n_jobs=1 forces sequential)
     try:
-        study.optimize(objective_with_args, n_trials=args.n_trials)
+        study.optimize(objective_with_args, n_trials=args.n_trials, n_jobs=1)
     except KeyboardInterrupt:
         logging.info("Optimization interrupted by user")
     
