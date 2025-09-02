@@ -162,6 +162,12 @@ def objective(trial: optuna.Trial,
     output_val_dir = trial_dir / "val"
     ckpt_save_dir = trial_dir / "checkpoints"
     
+    # Initialize variables that might be used in exception handler
+    original_config = {}
+    original_batch_size = config.BATCH_SIZE
+    original_lr = config.LEARNING_RATE 
+    original_max_epochs = config.MAX_EPOCHS
+    
     try:
         # Check if training data already exists
         train_exists = output_train_dir.exists() and len(list(output_train_dir.glob('*'))) > 0
@@ -185,22 +191,18 @@ def objective(trial: optuna.Trial,
         trial_config = create_config_with_hyperparameters(hyperparams)
         
         # Temporarily modify the config module
-        original_config = {}
         for key, value in trial_config.items():
             if hasattr(config, key.upper()):
                 original_config[key.upper()] = getattr(config, key.upper())
                 setattr(config, key.upper(), value)
         
         # Set batch size
-        original_batch_size = config.BATCH_SIZE
         config.BATCH_SIZE = hyperparams['batch_size']
         
         # Set learning rate 
-        original_lr = config.LEARNING_RATE
         config.LEARNING_RATE = hyperparams['learning_rate']
         
         # Reduce max epochs for optimization speed
-        original_max_epochs = config.MAX_EPOCHS
         config.MAX_EPOCHS = min(30, config.MAX_EPOCHS)  # Cap at 30 epochs for optimization
         
         logging.info(f"Trial {trial.number}: Starting training with {config.MAX_EPOCHS} epochs...")
