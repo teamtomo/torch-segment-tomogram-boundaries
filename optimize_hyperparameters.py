@@ -69,16 +69,31 @@ def suggest_hyperparameters(trial: optuna.Trial) -> Dict[str, Any]:
     # Try different channel sizes while maintaining decreasing pattern
     decoder_base = trial.suggest_categorical('decoder_base', [64, 128, 256, 512])
     
-    # Generate decoder channels with fixed ratios
-    decoder_channels = [
-        decoder_base,
-        decoder_base // 2,
-        decoder_base // 4,
-        decoder_base // 8,
-        decoder_base // 16
-    ]
-    # Ensure minimum channel size of 16
-    decoder_channels = [max(16, ch) for ch in decoder_channels]
+    # Generate decoder channels with fixed ratios, ensuring unique decreasing values
+    if decoder_base >= 256:
+        # For large bases: [512, 256, 128, 64, 32] or [256, 128, 64, 32, 16]
+        decoder_channels = [
+            decoder_base,
+            decoder_base // 2,
+            decoder_base // 4,
+            decoder_base // 8,
+            decoder_base // 16
+        ]
+    elif decoder_base >= 128:
+        # For medium bases: [128, 64, 32, 16] (4 channels)
+        decoder_channels = [
+            decoder_base,
+            decoder_base // 2,
+            decoder_base // 4,
+            decoder_base // 8
+        ]
+    else:
+        # For small bases: [64, 32, 16] (3 channels)  
+        decoder_channels = [
+            decoder_base,
+            decoder_base // 2,
+            decoder_base // 4
+        ]
     
     # Weight decay optimization
     weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-2, log=True)
