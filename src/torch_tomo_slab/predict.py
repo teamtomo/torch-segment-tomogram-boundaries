@@ -34,17 +34,7 @@ from torch_tomo_slab.utils.twoD import robust_normalization, local_variance_2d
 # Configure logging for prediction pipeline
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_device() -> torch.device:
-    """
-    Get the appropriate PyTorch device for computation.
-
-    Returns
-    -------
-    torch.device
-        CUDA device if available, otherwise CPU device.
-    """
-    if torch.cuda.is_available(): return torch.device("cuda")
-    return torch.device("cpu")
+from torch_tomo_slab.utils.common import get_device
 
 def downsample_points(points: np.ndarray, grid_size: int) -> np.ndarray:
     """
@@ -390,20 +380,12 @@ class TomoSlabPredictor:
 
         resized_volume = threeD.resize_and_pad_3d(torch.from_numpy(original_data_np),target_shape=self.target_shape_3d, mode='image').to(self.device)
 
-        # Predict along XZ and YZ axes
-        pred_xz = self._predict_single_axis(resized_volume, 'XZ', batch_size)
-        pred_yz = self._predict_single_axis(resized_volume.permute(0, 2, 1), 'YZ', batch_size).permute(0, 2, 1)
-
-        # Apply slab blending using utility function
-        if slab_size > 1:
-            logging.info(f"Applying slab blending with slab_size={slab_size}...")
-            pred_xz = threeD.apply_slab_blending(pred_xz, slab_size, self.device, 'Y') # Blending along Y for XZ predictions
-            
-            # For YZ predictions, we want to blend along the X-axis (W).
-            # So, permute (D, H, W) to (D, W, H), blend along the new H (which is W), then permute back.
-            pred_yz_permuted = pred_yz.permute(0, 2, 1) # Shape becomes (D, W, H)
-            pred_yz_blended_permuted = threeD.apply_slab_blending(pred_yz_permuted, slab_size, self.device, 'X') # Blending along X for YZ predictions
-            pred_yz = pred_yz_blended_permuted.permute(0, 2, 1) # Shape back to (D, H, W)
+        # Predict along XZ and YZ axes using memory-efficient slab blending
+        pred_xz = self._predict_single_axis_with_slab_blending_optimized(resized_volume, 'XZ', slab_size, batch_size)
+        pred_yz_permuted = self._predict_single_axis_with_slab_blending_optimized(
+            resized_volume.permute(0, 2, 1), 'YZ', slab_size, batch_size
+        )
+        pred_yz = pred_yz_permuted.permute(0, 2, 1)
 
         logging.info("Averaging final predictions from both axes.")
         prob_map_tensor = (pred_xz + pred_yz) / 2.0
@@ -510,7 +492,7 @@ class TomoSlabPredictor:
 
 
     @torch.no_grad()
-    def _predict_raw_slab(self, slab_3d: torch.Tensor, batch_size: int, proc: 'TrainingDataGenerator') -> torch.Tensor:
+    def _predict_raw_slab(self, slab_3d: torch.Tensor, batch_size: int) -> torch.Tensor:
         """
         Predict raw probabilities for a 3D slab using batched processing.
 
@@ -561,7 +543,7 @@ class TomoSlabPredictor:
         return torch.stack(predictions, dim=1)  # Shape: (D, H, W)
 
     @torch.no_grad()
-    def _predict_single_axis_with_slab_blending_optimized(self, volume_3d: torch.Tensor, axis: str, slab_size: int, batch_size: int, proc: 'TrainingDataGenerator') -> torch.Tensor:
+    def _predict_single_axis_with_slab_blending_optimized(self, volume_3d: torch.Tensor, axis: str, slab_size: int, batch_size: int) -> torch.Tensor:
         """
         Optimized version of slab blending prediction combining both steps.
         This method provides better memory efficiency for large volumes.
@@ -598,7 +580,7 @@ class TomoSlabPredictor:
             end = min(num_slices, i + half_slab + 1)
 
             # Extract and predict slab
-            predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size, proc)
+            predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size)
 
             # Calculate window indices and apply blending
             win_start = max(0, half_slab - i)

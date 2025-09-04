@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 from torch_tomo_slab import constants
-from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
+
 
 
 def scale_to_0_1(img, **kwargs):
@@ -15,15 +15,7 @@ def scale_to_0_1(img, **kwargs):
     return img.astype(np.float32)
 
 
-class AddBoundaryWeightMap(A.ImageOnlyTransform):
 
-    def __init__(self, high_weight: float = 10.0, base_weight: float = 1.0, always_apply=True, p=1.0):
-        super().__init__(always_apply, p)
-        self.high_weight = high_weight
-        self.base_weight = base_weight
-
-    def apply(self, img, **params):
-        return generate_boundary_weight_map(img, self.high_weight, self.base_weight)
 
 def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
     """

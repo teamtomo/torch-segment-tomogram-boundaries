@@ -156,9 +156,9 @@ class DynamicTrainingManager(pl.Callback):
 
         if swa_callback:
             # Manually activate the SWA callback
-            swa_callback._swa_epoch_start = current_epoch
+            swa_callback._swa_epoch_start = current_epoch + 1
             self.swa_triggered = True
-            log.info(f"\n[DynamicTrainingManager] Validation metric plateaued. Triggering SWA at epoch {current_epoch}.")
+            log.info(f"\n[DynamicTrainingManager] Validation metric plateaued. Triggering SWA at epoch {current_epoch + 1}.")
             # Reset best_score and patience to give SWA a fair chance to improve the model
             self.best_score = self.ema_score
             self.stop_wait_count = 0

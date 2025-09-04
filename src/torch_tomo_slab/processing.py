@@ -17,6 +17,7 @@ from tqdm import tqdm
 from torch_tomo_slab import config, constants
 from torch_tomo_slab.utils.threeD import resize_and_pad_3d
 from torch_tomo_slab.utils.twoD import robust_normalization
+from torch_tomo_slab.utils.common import get_device
 
 log = logging.getLogger(__name__)
 
@@ -84,22 +85,7 @@ class TrainingDataGenerator:
         self.output_val_dir = Path(output_val_dir)
         self.validation_fraction = validation_fraction
         self.target_shape = target_volume_shape
-        self.device = self._get_device()
-
-    def _get_device(self) -> torch.device:
-        """
-        Get optimal PyTorch device for tensor operations.
-        
-        Returns
-        -------
-        torch.device
-            CUDA device if available, otherwise CPU device.
-        """
-        if torch.cuda.is_available():
-            log.info("CUDA is available. Using GPU.")
-            return torch.device("cuda")
-        log.info("CUDA not available. Using CPU.")
-        return torch.device("cpu")
+        self.device = get_device(verbose=True)
 
     def _find_data_pairs(self) -> List[Tuple[Path, Path]]:
         """
