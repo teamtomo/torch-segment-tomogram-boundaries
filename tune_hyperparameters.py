@@ -43,9 +43,9 @@ def objective(trial: optuna.Trial) -> float:
     """Optuna objective function."""
 
     # Hyperparameter suggestions
-    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
+    learning_rate = trial.suggest_float("learning_rate", 5e-6, 5e-4, log=True)
     dropout = trial.suggest_float("dropout", 0.1, 0.5)
-    batch_size = trial.suggest_categorical("batch_size", [8, 16, 32])
+    batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64])
 
     decoder_config = trial.suggest_categorical("decoder_channels", ["small", "medium", "large"])
 
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     )
 
     try:
-        study.optimize(objective, n_trials=args.n_trials, timeout=3600 * 12)  # 12-hour timeout
+        study.optimize(objective, n_trials=args.n_trials, timeout=86400)  # 24-hour timeout
     except KeyboardInterrupt:
         print("Optimization stopped by user.")
 

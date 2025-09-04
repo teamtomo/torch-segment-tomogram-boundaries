@@ -61,12 +61,13 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             
             # === STEP 3: SAFE SPATIAL AUGMENTATIONS ===
             A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
             # REMOVED VerticalFlip - orientation matters in tomography
             
             # Conservative rotation for rectangular images
             A.Rotate(
                 limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],  # 8 degrees
-                p=0.3,  # Reduced probability
+                p=0.5,  # Reduced probability
                 border_mode=cv2.BORDER_REFLECT_101,
                 interpolation=cv2.INTER_LINEAR
             ),
@@ -76,13 +77,13 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.RandomCrop(
                 height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
                 width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
-                p=0.4
+                p=0.5
             ),
             
             # Conservative affine scaling (reduced from 0.8-1.2 to 0.95-1.05)
             A.Affine(
                 scale=constants.AUGMENTATION_CONFIG['AFFINE_SCALE_RANGE'],      # (0.95, 1.05)
-                p=0.3,  # Reduced probability
+                p=0.5,  # Reduced probability
                 border_mode=cv2.BORDER_REFLECT_101
             ),
             
@@ -90,13 +91,13 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.RandomBrightnessContrast(
                 brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],  # 0.1
                 contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],    # 0.1
-                p=0.4  # Reduced probability
+                p=0.5  # Reduced probability
             ),
             
             # Gamma correction variation
             A.RandomGamma(
                 gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (90, 110)
-                p=0.3
+                p=0.5
             ),
             
             # === STEP 6: NOISE AND BLUR ===
@@ -107,25 +108,25 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             
             A.GaussianBlur(
                 blur_limit=constants.AUGMENTATION_CONFIG['BLUR_LIMIT'],  # 3
-                p=0.2
+                p=0.4
             ),
             
             # === STEP 7: OCCLUSION/DROPOUT (KEEP PROVEN EFFECTIVE) ===
             # Coarse dropout - larger holes to force learning robust features
-            A.CoarseDropout(
-                num_holes_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_HOLES'],  # (3, 8)
-                hole_height_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_SIZE'], # (0.03, 0.08)
-                hole_width_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_SIZE'],  # (0.03, 0.08)
-                fill=0,
-                fill_mask=None,  # Don't fill mask holes
-                p=0.4
-            ),
+            #A.CoarseDropout(
+            #    num_holes_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_HOLES'],  # (3, 8)
+            #    hole_height_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_SIZE'], # (0.03, 0.08)
+            #    hole_width_range=constants.AUGMENTATION_CONFIG['COARSE_DROPOUT_SIZE'],  # (0.03, 0.08)
+            #    fill=0,
+            #    fill_mask=None,  # Don't fill mask holes
+            #    p=0.4
+            #),
             
             # Grid dropout - systematic occlusion patterns  
-            A.GridDropout(
-                ratio=constants.AUGMENTATION_CONFIG['GRID_DROPOUT_RATIO'],  # 0.3
-                p=0.3
-            ),
+            #A.GridDropout(
+            #    ratio=constants.AUGMENTATION_CONFIG['GRID_DROPOUT_RATIO'],  # 0.3
+            #    p=0.3
+            #),
         ]
     else:
         # Validation: Apply same dimensional preprocessing for consistency

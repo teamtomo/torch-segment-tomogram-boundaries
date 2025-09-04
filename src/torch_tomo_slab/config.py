@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 5e-5  # Much lower for dataset size
+LEARNING_RATE: float = 9.8e-5  # Much lower for dataset size
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 0
@@ -29,14 +29,14 @@ WARMUP_EPOCHS: int = 0
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
-    'encoder_name': "resnet34",
-    'encoder_weights': None,
+    'encoder_name': "vgg11",
+    'encoder_weights': "imagenet",
     'encoder_depth': 5,
-    'decoder_channels': [256,128,64,32,16],
+    'decoder_channels': [512, 256, 128, 64, 32],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.1
+    'dropout': 0.3
 }
 
 # --- Loss Function Configuration ---
@@ -54,14 +54,14 @@ LOSS_CONFIG: dict[str, any] = {
 
 # --- DATALOADER & AUGMENTATION ---
 BATCH_SIZE: int = 16
-NUM_WORKERS: int = 8
+NUM_WORKERS: int = 16
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
 USE_DYNAMIC_MANAGER: bool = True
 EMA_ALPHA: float = 0.3                 # Lower for more stability (less responsive to noise)
 SWA_TRIGGER_PATIENCE: int = 5       # Ultra-aggressive - trigger SWA after 5 epochs of plateau
 EARLY_STOP_PATIENCE: int = 5       # Ultra-aggressive - stop after 5 epochs post-SWA
-EARLY_STOP_MIN_DELTA: float = 5e-4
+EARLY_STOP_MIN_DELTA: float = 5e-3
 
 # --- FALLBACK: STANDARD CALLBACKS ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 6
