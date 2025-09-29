@@ -223,7 +223,7 @@ class TomoSlabTrainer:
             callbacks.append(StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start))
         return callbacks
 
-    def fit(self, extra_callbacks: Optional[List[pl.Callback]] = None) -> None:
+    def fit(self, extra_callbacks: Optional[List[pl.Callback]] = None, extra_trainer_kwargs: Optional[Dict[str, Any]] = None) -> None:
         """
         Execute the complete training pipeline.
 
@@ -243,7 +243,7 @@ class TomoSlabTrainer:
         datamodule = self._setup_datamodule()
         pl_model = self._setup_model()
 
-        if self.global_rank == 0: print("\n--- Configuring Logger and Callbacks ---")
+        if self.global_rank == 0: print("--- Configuring Logger and Callbacks ---")
         experiment_name = f"{self.model_arch}-{self.model_encoder}"
         experiment_details = f"loss-{self.loss_config['name'].replace('+', '_')}"
         logger = TensorBoardLogger(
@@ -255,20 +255,27 @@ class TomoSlabTrainer:
         if extra_callbacks:
             callbacks.extend(extra_callbacks)
 
-        self.trainer = pl.Trainer(
-            max_epochs=config.MAX_EPOCHS, accelerator=config.ACCELERATOR, devices=config.DEVICES,
-            precision=config.PRECISION, log_every_n_steps=constants.LOG_EVERY_N_STEPS,
-            check_val_every_n_epoch=constants.CHECK_VAL_EVERY_N_EPOCH,
-            logger=logger,
-            callbacks=callbacks,
-            strategy="ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
-            gradient_clip_val=1.0,
-            gradient_clip_algorithm="norm",
-            enable_model_summary=True
-        )
+        trainer_config = {
+            "max_epochs": config.MAX_EPOCHS,
+            "accelerator": config.ACCELERATOR,
+            "devices": config.DEVICES,
+            "precision": config.PRECISION,
+            "log_every_n_steps": constants.LOG_EVERY_N_STEPS,
+            "check_val_every_n_epoch": constants.CHECK_VAL_EVERY_N_EPOCH,
+            "logger": logger,
+            "callbacks": callbacks,
+            "strategy": "ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
+            "gradient_clip_val": 1.0,
+            "gradient_clip_algorithm": "norm",
+            "enable_model_summary": True,
+        }
+        if extra_trainer_kwargs:
+            trainer_config.update(extra_trainer_kwargs)
+
+        self.trainer = pl.Trainer(**trainer_config)
 
         if self.global_rank == 0:
-            print("\n--- Starting Training ---")
+            print("--- Starting Training ---")
             print(f"To view logs, run: tensorboard --logdir={logger.save_dir}")
 
         self.trainer.fit(pl_model, datamodule=datamodule)
@@ -277,3 +284,46 @@ class TomoSlabTrainer:
             print("--- Training Finished ---")
             if hasattr(self.trainer.checkpoint_callback, 'best_model_path') and self.trainer.checkpoint_callback is not None:
                 print(f"Best model checkpoint saved at: {self.trainer.checkpoint_callback.best_model_path}")
+
+
+def train(
+    train_data_dir: Path,
+    val_data_dir: Path,
+    ckpt_save_dir: Path = config.CKPT_SAVE_PATH,
+    learning_rate: float = config.LEARNING_RATE,
+    max_epochs: int = config.MAX_EPOCHS,
+    **trainer_kwargs,
+):
+    """
+    High-level function to train a tomogram segmentation model.
+
+    This function provides a simple interface for training, handling the setup
+    of the model, data, and trainer based on the provided parameters and
+    project configurations.
+
+    Parameters
+    ----------
+    train_data_dir : Path
+        Directory containing training data files (*.pt).
+    val_data_dir : Path
+        Directory containing validation data files (*.pt).
+    ckpt_save_dir : Path, optional
+        Directory to save model checkpoints and logs, by default config.CKPT_SAVE_PATH.
+    learning_rate : float, optional
+        Initial learning rate for the optimizer, by default config.LEARNING_RATE.
+    max_epochs : int, optional
+        Maximum number of training epochs, by default config.MAX_EPOCHS.
+    **trainer_kwargs :
+        Additional keyword arguments to be passed to the PyTorch Lightning Trainer.
+        This allows for overriding settings like 'accelerator', 'devices', etc.
+    """
+    trainer = TomoSlabTrainer(
+        learning_rate=learning_rate,
+        train_data_dir=train_data_dir,
+        val_data_dir=val_data_dir,
+        ckpt_save_dir=ckpt_save_dir,
+    )
+
+    # Combine max_epochs with other trainer arguments
+    all_trainer_kwargs = {"max_epochs": max_epochs, **trainer_kwargs}
+    trainer.fit(extra_trainer_kwargs=all_trainer_kwargs)

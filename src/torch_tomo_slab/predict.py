@@ -602,3 +602,45 @@ class TomoSlabPredictor:
 
         return torch.stack(final_slices, dim=1)
 
+def predict(
+    input_tomogram: Union[str, Path, np.ndarray],
+    model_checkpoint_path: Union[str, Path],
+    output_path: Optional[Path] = None,
+    **predict_kwargs,
+) -> np.ndarray:
+    """
+    High-level function to predict a slab mask from a tomogram.
+
+    This function provides a simple interface for inference, handling the
+    instantiation of the predictor, model loading, and execution of the
+    prediction pipeline.
+
+    Parameters
+    ----------
+    input_tomogram : Union[str, Path, np.ndarray]
+        Input tomogram, can be a path to an MRC file or a pre-loaded numpy array.
+    model_checkpoint_path : Union[str, Path]
+        Path to the trained PyTorch Lightning model checkpoint (.ckpt file).
+    output_path : Optional[Path], optional
+        Path to save the final output mask as an MRC file. If None, the mask
+        is returned but not saved to disk. By default None.
+    **predict_kwargs :
+        Additional keyword arguments to be passed to the predictor's predict method.
+        This allows for overriding settings like 'slab_size', 'batch_size', etc.
+
+    Returns
+    -------
+    np.ndarray
+        The final binary slab mask as a 3D numpy array.
+    """
+    # Initialize the predictor with the given model checkpoint
+    predictor = TomoSlabPredictor(model_checkpoint_path=model_checkpoint_path)
+
+    # Run the prediction pipeline
+    final_mask = predictor.predict(
+        input_tomogram=input_tomogram,
+        output_path=output_path,
+        **predict_kwargs,
+    )
+
+    return final_mask
