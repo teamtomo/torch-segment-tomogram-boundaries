@@ -2,7 +2,7 @@ import numpy as np
 from scipy.ndimage import binary_erosion
 
 
-def generate_boundary_weight_map(mask: np.ndarray, high_weight: float = 10.0, base_weight: float = 1.0) -> np.ndarray:
+def generate_boundary_weight_map(mask: np.ndarray, high_weight: float = 4.0, base_weight: float = 1.0) -> np.ndarray:
     """
     Generates a weight map where pixels on the boundary of objects have a higher weight
     Args:
@@ -26,5 +26,10 @@ def generate_boundary_weight_map(mask: np.ndarray, high_weight: float = 10.0, ba
     # Create the weight map
     weight_map = np.full(mask.shape, base_weight, dtype=np.float32)
     weight_map[boundary == 1] = high_weight
+
+    # Normalize so the mean stays close to 1 and gradients remain stable
+    mean_val = weight_map.mean()
+    if mean_val > 0:
+        weight_map = weight_map / mean_val
 
     return weight_map

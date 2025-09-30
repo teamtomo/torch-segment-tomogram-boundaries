@@ -80,9 +80,9 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
     
     Key improvements:
     - Guaranteed output dimensions via Resize + CenterCrop strategy
-    - Removed VerticalFlip (inappropriate for tomography orientation)  
-    - Conservative scaling to prevent dimension instability
-    - RandomCrop for natural zoom variation
+    - Removed vertical flips that break tomography orientation
+    - Conservative scaling/rotation to prevent dimension instability
+    - No additional random crops; rely on affine jitter only
     
     Args:
         is_training: If True, apply stochastic augmentations for regularization
@@ -106,19 +106,13 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
                 p=1.0
             ),
-            A.HorizontalFlip(p=0.7),
-            A.VerticalFlip(p=0.7),
+            A.HorizontalFlip(p=0.5),
             # Conservative rotation for rectangular images
             A.Rotate(
                 limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],
                 p=0.7,
                 border_mode=cv2.BORDER_REFLECT_101,
                 interpolation=cv2.INTER_LINEAR
-            ),
-            A.RandomCrop(
-                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],
-                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],
-                p=0.65
             ),
             A.Affine(
                 scale=constants.AUGMENTATION_CONFIG['AFFINE_SCALE_RANGE'],
@@ -136,7 +130,7 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 p=0.7
             ),
 
-            MissingWedge(angle_range=(30, 70.0), p=0.8),
+            MissingWedge(angle_range=(30, 70.0), p=0.3),
             
 
         ]

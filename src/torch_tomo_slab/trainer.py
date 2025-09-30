@@ -59,7 +59,7 @@ class TomoSlabTrainer:
     classes : int
         Number of output classes (1 for binary segmentation).
     in_channels : int
-        Input channels (2 for normalized + variance).
+        Number of input channels (currently 1 for single normalized intensity).
     loss_config : Dict[str, Any]
         Loss function configuration.
     learning_rate : float
@@ -102,7 +102,7 @@ class TomoSlabTrainer:
         classes : int
             Number of output classes (1 for binary segmentation).
         in_channels : int
-            Number of input channels (2 for normalized + variance images).
+            Number of input channels (1 for normalized intensity images).
         loss_config : Dict[str, Any]
             Loss function configuration with 'name' and optional 'weights'.
         learning_rate : float
@@ -265,7 +265,7 @@ class TomoSlabTrainer:
             "logger": logger,
             "callbacks": callbacks,
             "strategy": "ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
-            "gradient_clip_val": 1.0,
+            "gradient_clip_val": 0.5,
             "gradient_clip_algorithm": "norm",
             "enable_model_summary": True,
         }
@@ -317,6 +317,8 @@ def train(
         Additional keyword arguments to be passed to the PyTorch Lightning Trainer.
         This allows for overriding settings like 'accelerator', 'devices', etc.
     """
+    pl.seed_everything(42, workers=True)
+
     trainer = TomoSlabTrainer(
         learning_rate=learning_rate,
         train_data_dir=train_data_dir,

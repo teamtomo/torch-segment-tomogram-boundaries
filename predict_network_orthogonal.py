@@ -15,7 +15,6 @@ import mrcfile
 from pathlib import Path
 from torch_tomo_slab.predict import TomoSlabPredictor
 from torch_tomo_slab.utils import threeD
-from torch_tomo_slab.utils.twoD import robust_normalization, local_variance_2d
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -21,12 +21,13 @@ class StratifiedSampler(Sampler[int]):
     DataLoader creates a batch, it is composed of slices from different original
     tomograms, improving model generalization.
     """
-    def __init__(self, file_paths: List[Path], batch_size: int):
+    def __init__(self, file_paths: List[Path], batch_size: int, seed: int = 42):
         super().__init__(file_paths)
         self.file_paths = file_paths
         self.batch_size = batch_size
         self.groups = self._group_by_volume()
         self.num_samples = len(file_paths)
+        self._rng = random.Random(seed)
 
     def _group_by_volume(self) -> List[List[int]]:
         """Groups file indices by the volume stem from their filename."""
@@ -47,7 +48,7 @@ class StratifiedSampler(Sampler[int]):
         """Yields a sequence of indices with volumes interleaved."""
         # Shuffle indices within each group
         for group in self.groups:
-            random.shuffle(group)
+            self._rng.shuffle(group)
 
         # Interleave the groups
         # Create a list of iterators for each group
@@ -56,7 +57,7 @@ class StratifiedSampler(Sampler[int]):
         # Round-robin yielding of indices
         while iterators:
             # Shuffle the order of volumes for each round-robin cycle
-            random.shuffle(iterators)
+            self._rng.shuffle(iterators)
             
             for i in range(len(iterators) - 1, -1, -1):
                 it = iterators[i]
@@ -106,7 +107,7 @@ class SegmentationDataModule(pl.LightningDataModule):
 
     def train_dataloader(self) -> DataLoader:
         """Creates the training DataLoader with the StratifiedSampler."""
-        sampler = StratifiedSampler(self.train_pt_files, batch_size=self.hparams.batch_size)
+        sampler = StratifiedSampler(self.train_pt_files, batch_size=self.hparams.batch_size, seed=42)
         return DataLoader(
             self.train_dataset,
             batch_size=self.hparams.batch_size,

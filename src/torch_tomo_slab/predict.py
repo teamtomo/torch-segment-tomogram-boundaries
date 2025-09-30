@@ -29,7 +29,7 @@ from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
 
 from torch_tomo_slab.utils import threeD, twoD
-from torch_tomo_slab.utils.twoD import robust_normalization, local_variance_2d
+from torch_tomo_slab.utils.twoD import robust_normalization
 
 # Configure logging for prediction pipeline
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -288,10 +288,10 @@ class TomoSlabPredictor:
             try:
                 logging.info("Warming up compiled model...")
 
-                # Create dummy input matching expected model input shape (2 channels)
+                # Create dummy input matching the single-channel model input shape
                 if hasattr(self.model, 'hparams') and self.target_shape_3d:
                     D, H, W = self.target_shape_3d
-                    dummy_input = torch.randn(batch_size, 2, D, W, device=self.device)
+                    dummy_input = torch.randn(batch_size, 1, D, W, device=self.device)
 
                     # Run a few warm-up iterations
                     for _ in range(3):
@@ -469,18 +469,12 @@ class TomoSlabPredictor:
             for j in range(i, end_idx):
                 slice_2d = volume_3d[:, j, :]  # Shape: (D, W)
 
-                # Apply robust normalization
-                slice_norm = robust_normalization(slice_2d)
-
-                # Compute local variance
-                slice_var = local_variance_2d(slice_norm)
-
-                # Create 2-channel input (normalized + variance)
-                two_channel_input = torch.stack([slice_norm, slice_var], dim=0)  # Shape: (2, D, W)
-                batch_slices.append(two_channel_input)
+                # Apply robust normalization and keep the single-channel input
+                slice_norm = robust_normalization(slice_2d).unsqueeze(0)
+                batch_slices.append(slice_norm)
 
             # Stack slices into batch
-            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 2, D, W)
+            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 1, D, W)
 
             # Process batch through model
             pred_batch = self.model(batch_tensor)
@@ -521,18 +515,12 @@ class TomoSlabPredictor:
             for j in range(i, end_idx):
                 slice_2d = slab_3d[:, j, :]  # Shape: (D, W)
 
-                # Apply robust normalization
-                slice_norm = robust_normalization(slice_2d)
-
-                # Compute local variance
-                slice_var = local_variance_2d(slice_norm)
-
-                # Create 2-channel input (normalized + variance)
-                two_channel_input = torch.stack([slice_norm, slice_var], dim=0)  # Shape: (2, D, W)
-                batch_slices.append(two_channel_input)
+                # Apply robust normalization and keep the single-channel input
+                slice_norm = robust_normalization(slice_2d).unsqueeze(0)
+                batch_slices.append(slice_norm)
 
             # Stack slices into batch
-            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 2, D, W)
+            batch_tensor = torch.stack(batch_slices, dim=0)  # Shape: (batch_size, 1, D, W)
 
             # Process batch through model
             pred_batch = self.model(batch_tensor)
@@ -591,12 +579,10 @@ class TomoSlabPredictor:
             if current_window.sum() > 0:
                 final_slice = torch.einsum('dwh,d->wh', predicted_slab, current_window) / current_window.sum()
             else:
-                # Fallback: predict single slice with proper 2-channel input
+                # Fallback: predict single slice with the same single-channel pathway
                 slice_2d = volume_3d[:, i, :]
-                slice_norm = robust_normalization(slice_2d)
-                slice_var = local_variance_2d(slice_norm)
-                two_channel_input = torch.stack([slice_norm, slice_var], dim=0).unsqueeze(0)  # Shape: (1, 2, D, W)
-                final_slice = torch.sigmoid(self.model(two_channel_input)).squeeze(0).squeeze(0)
+                slice_input = robust_normalization(slice_2d).unsqueeze(0).unsqueeze(0)
+                final_slice = torch.sigmoid(self.model(slice_input)).squeeze(0).squeeze(0)
 
             final_slices.append(final_slice)
 

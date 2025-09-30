@@ -31,8 +31,8 @@ class TrainingDataGenerator:
     
     The processing pipeline includes:
     - Loading and resizing 3D volumes to standard dimensions
-    - Extracting 2D slices along Y-axis
-    - Applying robust normalization and local variance computation
+    - Extracting 2D slices along Y- or X-axes with random slab averaging
+    - Applying robust normalization
     - Splitting data into training and validation sets
     - Saving preprocessed samples as PyTorch tensor files
     

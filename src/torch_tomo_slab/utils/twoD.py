@@ -1,8 +1,7 @@
 """2D image processing utilities for tomographic data.
 
-This module provides specialized 2D image processing functions used in
-the tomographic segmentation pipeline, including robust normalization
-and local variance computation.
+This module provides the robust normalization helper used across
+the tomographic segmentation pipeline.
 """
 
 import torch
@@ -30,5 +29,4 @@ def robust_normalization(data: torch.Tensor) -> torch.Tensor:
     p5, p95 = torch.quantile(data, 0.05), torch.quantile(data, 0.95)
     if p95 - p5 < 1e-5: return data - torch.median(data)
     return (data - torch.median(data)) / (p95 - p5)
-
 

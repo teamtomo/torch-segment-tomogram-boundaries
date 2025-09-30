@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 4e-4 
+LEARNING_RATE: float = 2e-4
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 0
@@ -29,14 +29,14 @@ WARMUP_EPOCHS: int = 0
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
-    'encoder_name': "resnet18",
+    'encoder_name': "resnet34",
     'encoder_weights': None,
-    'encoder_depth': 3,
-    'decoder_channels': [512, 256, 128],
+    'encoder_depth': 5,
+    'decoder_channels': [512, 256, 128, 64, 32],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.5
+    'dropout': 0.1
 }
 
 # --- Loss Function Configuration ---
@@ -47,17 +47,17 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
+        'label_smoothing': 0.02,  # Softer smoothing to reduce overconfidence
         'gradient_weight': 10,
     }
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 4
+BATCH_SIZE: int = 8
 NUM_WORKERS: int = 16
 
 # --- DYNAMIC TRAINING MANAGEMENT ---
-USE_DYNAMIC_MANAGER: bool = True
+USE_DYNAMIC_MANAGER: bool = False
 EMA_ALPHA: float = 0.3                 # Lower for more stability (less responsive to noise)
 SWA_TRIGGER_PATIENCE: int = 5       # Ultra-aggressive - trigger SWA after 5 epochs of plateau
 EARLY_STOP_PATIENCE: int = 5       # Ultra-aggressive - stop after 5 epochs post-SWA
@@ -92,7 +92,7 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "ReduceLROnPlateau",
     "params": {
-        "patience":4  # Higher floor to prevent numerical collapse at low LR
+        "patience": 4  # Higher floor to prevent numerical collapse at low LR
     },
     "monitor": "val_loss"
 }
