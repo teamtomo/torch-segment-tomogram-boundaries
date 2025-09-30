@@ -44,6 +44,10 @@ MODEL_CONFIG: dict[str, any] = {
     'segmentation_head_dropout': 0.1,
 }
 
+# Control whether validation keeps per-pixel weighting; disabling aligns val_loss with
+# unweighted BCE so the metric reflects global accuracy instead of boundary emphasis.
+USE_WEIGHT_MAP_FOR_VALIDATION: bool = False
+
 # --- Loss Function Configuration ---
 # 'name': Can be a single loss or multiple losses combined with '+'.
 # 'weights': A list of weights for combined losses. Must match the number of losses.

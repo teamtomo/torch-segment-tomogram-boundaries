@@ -38,7 +38,10 @@ class SegmentationModel(pl.LightningModule):
             pred_logits = model_output[0]  # Main segmentation output
         else:
             pred_logits = model_output
-        loss = self.criterion(pred_logits, label, weight_map)
+        effective_weight_map = weight_map
+        if stage == 'val' and not getattr(config, 'USE_WEIGHT_MAP_FOR_VALIDATION', True):
+            effective_weight_map = None
+        loss = self.criterion(pred_logits, label, effective_weight_map)
         self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage == 'train'), on_epoch=True, batch_size=batch_size,
                  sync_dist=True)
         
