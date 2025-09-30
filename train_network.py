@@ -63,15 +63,15 @@ def train_and_prep(
 
 
 if __name__ == "__main__":
-    # Use paths from the centralized config file
-    # Ensure these directories exist and contain your data
-    config.TOMOGRAM_DIR.mkdir(parents=True, exist_ok=True)
-    config.MASKS_DIR.mkdir(parents=True, exist_ok=True)
-    
+    tomo_dir = Path("/home/pranav/Desktop/pranav/data/training/torch-tomo-slab/data_in/volumes")
+    mask_vol_dir = Path("/home/pranav/Desktop/pranav/data/training/torch-tomo-slab/data_in/boundary_mask_volumes")
+    output_train_dir = Path("/home/pranav/Desktop/pranav/data/training/torch-tomo-slab/prepared_data/train")
+    output_val_dir = Path("/home/pranav/Desktop/pranav/data/training/torch-tomo-slab/prepared_data/val/")
+    ckpt_save_dir = Path("/home/pranav/data/training/torch-tomo-slab/weights")
     train_and_prep(
-        tomo_dir=config.TOMOGRAM_DIR,
-        mask_vol_dir=config.MASKS_DIR,
-        output_train_dir=config.TRAIN_DATA_DIR,
-        output_val_dir=config.VAL_DATA_DIR,
-        ckpt_save_dir=config.CKPT_SAVE_PATH,
+        tomo_dir=tomo_dir,
+        mask_vol_dir=mask_vol_dir,
+        output_train_dir=output_train_dir,
+        output_val_dir=output_val_dir,
+        ckpt_save_dir=ckpt_save_dir,
     )

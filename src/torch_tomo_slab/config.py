@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 9.8e-5  # Much lower for dataset size
+LEARNING_RATE: float = 4e-4 
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 0
@@ -29,14 +29,14 @@ WARMUP_EPOCHS: int = 0
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
     'arch': "Unet",
-    'encoder_name': "vgg11",
-    'encoder_weights': "imagenet",
-    'encoder_depth': 5,
-    'decoder_channels': [512, 256, 128, 64, 32],
+    'encoder_name': "resnet18",
+    'encoder_weights': None,
+    'encoder_depth': 3,
+    'decoder_channels': [512, 256, 128],
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.3
+    'dropout': 0.5
 }
 
 # --- Loss Function Configuration ---
@@ -44,7 +44,7 @@ MODEL_CONFIG: dict[str, any] = {
 # 'weights': A list of weights for combined losses. Must match the number of losses.
 # 'params': A nested dictionary for loss-specific hyperparameters (now unused).
 LOSS_CONFIG: dict[str, any] = {
-    'name': 'weighted_bce+weighted_huber_with_gradient',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
+    'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
         'label_smoothing': 0.1,  # Add label smoothing to reduce overconfidence
@@ -53,7 +53,7 @@ LOSS_CONFIG: dict[str, any] = {
 }
 
 # --- DATALOADER & AUGMENTATION ---
-BATCH_SIZE: int = 16
+BATCH_SIZE: int = 4
 NUM_WORKERS: int = 16
 
 # --- DYNAMIC TRAINING MANAGEMENT ---

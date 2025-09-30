@@ -34,11 +34,11 @@ class MissingWedge(A.ImageOnlyTransform):
 
         # 2. Perform the forward Fourier Transform
         fft_img = fftshift(fft2(img))
-        h, w = img.shape
+        h, w = np.squeeze(img,axis=-1).shape
 
         # 3. Create a coordinate grid in Fourier space
         ch, cw = h / 2, w / 2
-        y_coords, x_coords = np.indices(img.shape)
+        y_coords, x_coords = np.indices(np.squeeze(img,axis=-1).shape)
         x_coords = x_coords - cw
         y_coords = y_coords - ch
 
@@ -106,19 +106,19 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
                 width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
                 p=1.0
             ),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
+            A.HorizontalFlip(p=0.7),
+            A.VerticalFlip(p=0.7),
             # Conservative rotation for rectangular images
             A.Rotate(
                 limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],
-                p=0.5,
+                p=0.7,
                 border_mode=cv2.BORDER_REFLECT_101,
                 interpolation=cv2.INTER_LINEAR
             ),
             A.RandomCrop(
                 height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],
                 width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],
-                p=0.5
+                p=0.65
             ),
             A.Affine(
                 scale=constants.AUGMENTATION_CONFIG['AFFINE_SCALE_RANGE'],
@@ -128,15 +128,15 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.RandomBrightnessContrast(
                 brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
                 contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
-                p=0.5  # Reduced probability
+                p=0.7  # Reduced probability
             ),
 
             A.RandomGamma(
                 gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (90, 110)
-                p=0.5
+                p=0.7
             ),
 
-            MissingWedge(angle_range=(30, 70.0), p=0.5),
+            MissingWedge(angle_range=(30, 70.0), p=0.8),
             
 
         ]
