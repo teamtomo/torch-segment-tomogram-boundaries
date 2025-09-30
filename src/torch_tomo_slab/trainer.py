@@ -48,7 +48,7 @@ class UnetWithDropout(smp.Unet):
 
     def forward(self, x):  # type: ignore[override]
         features = self.encoder(x)
-        decoder_output = self.decoder(*features)
+        decoder_output = self.decoder(*features[1:])
         if self._decoder_dropout is not None:
             decoder_output = self._decoder_dropout(decoder_output)
         masks = self.segmentation_head(decoder_output)
