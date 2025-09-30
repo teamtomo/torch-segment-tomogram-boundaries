@@ -28,20 +28,12 @@ WARMUP_EPOCHS: int = 0
 
 # --- MODEL ARCHITECTURE ---
 MODEL_CONFIG: dict[str, any] = {
-    'arch': "Unet",
-    'encoder_name': "resnet34",
-    'encoder_weights': None,
-    'encoder_depth': 5,
-    'decoder_channels': [512, 256, 128, 64, 32],
-    'decoder_attention_type': 'scse',
-    'classes': 1,
     'in_channels': 1,
-    # Dropout applied to the optional aux/classification head retained for parity
+    'out_channels': 1,
+    'channels': (32, 64, 128, 256, 512),
+    'strides': (2, 2, 2, 2),
+    'num_res_units': 2,
     'dropout': 0.1,
-    # Decoder activations (pre-final head) dropout to combat overfitting
-    'decoder_dropout': 0.2,
-    # Dropout inserted immediately before the segmentation head convolution
-    'segmentation_head_dropout': 0.1,
 }
 
 # Control whether validation keeps per-pixel weighting; disabling aligns val_loss with

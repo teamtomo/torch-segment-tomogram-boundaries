@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 import mrcfile
 import numpy as np
 import pandas as pd
-import segmentation_models_pytorch as smp
+from torch_tomo_slab.models import create_unet
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -206,15 +206,7 @@ class TomoSlabPredictor:
         """
         self.device = get_device()
         logging.info(f"Loading model from checkpoint: {model_checkpoint_path}")
-        base_model = smp.create_model(
-            arch=config.MODEL_CONFIG['arch'],
-            encoder_name=config.MODEL_CONFIG['encoder_name'],
-            encoder_weights=None,
-            encoder_depth=config.MODEL_CONFIG['encoder_depth'],
-            decoder_channels=config.MODEL_CONFIG['decoder_channels'],
-            decoder_attention_type=config.MODEL_CONFIG['decoder_attention_type'],
-            classes=config.MODEL_CONFIG['classes'],
-            in_channels=config.MODEL_CONFIG['in_channels'])
+        base_model = create_unet(**config.MODEL_CONFIG)
 
         loss_fn = get_loss_function(config.LOSS_CONFIG)
         self.model = SegmentationModel.load_from_checkpoint(

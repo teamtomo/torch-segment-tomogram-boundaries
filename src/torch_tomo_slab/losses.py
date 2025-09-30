@@ -6,39 +6,24 @@ and flexible loss combination utilities.
 """
 from typing import Dict, Tuple, Optional
 
-import segmentation_models_pytorch as smp
+from monai.losses import DiceLoss
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-class SMPLossWrapper(nn.Module):
+class SimpleDiceLoss(nn.Module):
     """
-    Wrapper for segmentation-models-pytorch losses to match API signature.
-    
-    This wrapper ensures that SMP losses can be used with the consistent
-    3-parameter signature (pred_logits, target, weight_map) expected by
-    the training pipeline.
-    
-    Parameters
-    ----------
-    loss : nn.Module
-        The SMP loss function to wrap.
-    from_logits : bool
-        Whether the loss expects logits (True) or probabilities (False).
+    Simplified MONAI DiceLoss wrapper.
     """
 
-    def __init__(self, loss: nn.Module, from_logits: bool):
+    def __init__(self, from_logits: bool = True):
         super().__init__()
-        self.loss = loss
-        self.from_logits = from_logits
-        self.name = getattr(loss, '__name__', loss.__class__.__name__)
+        self.dice_loss = DiceLoss(sigmoid=from_logits, squared_pred=True, reduction='mean')
+        self.name = 'DiceLoss'
 
     def forward(self, pred_logits: torch.Tensor, target: torch.Tensor, weight_map: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if self.from_logits:
-            return self.loss(pred_logits, target)
-        else:
-            return self.loss(torch.sigmoid(pred_logits), target)
+        return self.dice_loss(pred_logits, target)
 
 
 class WeightedBCELoss(nn.Module):
@@ -243,7 +228,7 @@ def get_loss_function(loss_config: dict) -> nn.Module:
         'bce': nn.BCEWithLogitsLoss(),
         'weighted_bce': WeightedBCELoss(from_logits=from_logits, label_smoothing=label_smoothing),
         'boundary': BoundaryLoss(from_logits=from_logits),
-        'dice': SMPLossWrapper(smp.losses.DiceLoss(mode='binary'), from_logits=from_logits),
+        'dice': SimpleDiceLoss(from_logits=from_logits),
         'weighted_huber_with_gradient': WeightedHuberWithGradientLoss(from_logits=from_logits),
     }
 

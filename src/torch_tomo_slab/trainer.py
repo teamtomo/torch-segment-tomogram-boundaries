@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
+from torch_tomo_slab.models import create_unet
 import torch
 import torch.nn as nn
 # Note: keep callback imports grouped for clarity
@@ -69,14 +69,6 @@ class TomoSlabTrainer:
     """
 
     def __init__(self,
-                 model_arch: str = config.MODEL_CONFIG['arch'],
-                 model_encoder: str = config.MODEL_CONFIG['encoder_name'],
-                 encoder_weights: Optional[str] = config.MODEL_CONFIG['encoder_weights'],
-                 encoder_depth: int = config.MODEL_CONFIG['encoder_depth'],
-                 decoder_channels: List[int] = config.MODEL_CONFIG['decoder_channels'],
-                 decoder_attention_type: str = config.MODEL_CONFIG['decoder_attention_type'],
-                 classes: int = config.MODEL_CONFIG['classes'],
-                 in_channels: int = config.MODEL_CONFIG['in_channels'],
                  loss_config: Dict[str, Any] = config.LOSS_CONFIG,
                  learning_rate: float = config.LEARNING_RATE,
                  train_data_dir: Path = config.TRAIN_DATA_DIR,
@@ -112,14 +104,6 @@ class TomoSlabTrainer:
         val_data_dir : Path
             Directory containing validation data files.
         """
-        self.model_arch = model_arch
-        self.model_encoder = model_encoder
-        self.encoder_weights = encoder_weights
-        self.encoder_depth = encoder_depth
-        self.decoder_channels = decoder_channels
-        self.decoder_attention_type = decoder_attention_type
-        self.classes = classes
-        self.in_channels = in_channels
         self.loss_config = loss_config
         self.learning_rate = learning_rate
         self.train_data_dir = Path(train_data_dir)
@@ -161,44 +145,7 @@ class TomoSlabTrainer:
         SegmentationModel
             Configured Lightning module with model, loss function, and hyperparameters.
         """
-        decoder_dropout = config.MODEL_CONFIG.get('decoder_dropout', 0.0)
-        head_dropout = config.MODEL_CONFIG.get('segmentation_head_dropout', 0.0)
-        aux_dropout = config.MODEL_CONFIG.get('dropout', 0.0)
-
-        aux_params = {'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None
-
-        base_model = smp.create_model(
-            arch=self.model_arch,
-            encoder_name=self.model_encoder,
-            encoder_weights=self.encoder_weights,
-            encoder_depth=self.encoder_depth,
-            decoder_channels=self.decoder_channels,
-            decoder_attention_type=self.decoder_attention_type,
-            classes=self.classes,
-            in_channels=self.in_channels,
-            activation=None,
-            aux_params=aux_params,
-        )
-
-        if decoder_dropout and decoder_dropout > 0.0:
-            base_model.decoder._dropout_layer = nn.Dropout2d(decoder_dropout)
-            original_forward = base_model.decoder.forward
-
-            def forward_with_dropout(self, *args, **kwargs):
-                decoder_output = original_forward(*args, **kwargs)
-                return self._dropout_layer(decoder_output)
-
-            base_model.decoder.forward = forward_with_dropout.__get__(base_model.decoder, base_model.decoder.__class__)
-            if self.global_rank == 0:
-                print(f"Decoder dropout enabled (p={decoder_dropout}).")
-
-        if head_dropout and head_dropout > 0.0:
-            base_model.segmentation_head = nn.Sequential(
-                nn.Dropout2d(head_dropout),
-                base_model.segmentation_head,
-            )
-            if self.global_rank == 0:
-                print(f"Segmentation head dropout enabled (p={head_dropout}).")
+        base_model = create_unet(**config.MODEL_CONFIG)
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
