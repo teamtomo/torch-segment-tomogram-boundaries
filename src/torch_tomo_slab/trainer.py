@@ -10,6 +10,8 @@ from pathlib import Path
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import torch
+import torch.nn as nn
+# Note: keep callback imports grouped for clarity
 from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
@@ -24,6 +26,36 @@ from torch_tomo_slab.callbacks import DynamicTrainingManager
 from torch_tomo_slab.data.dataloading import SegmentationDataModule
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
+
+
+class UnetWithDropout(smp.Unet):
+    """smp.Unet variant that injects configurable dropout before the head."""
+
+    def __init__(
+        self,
+        *args,
+        decoder_dropout: float = 0.0,
+        segmentation_head_dropout: float = 0.0,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._decoder_dropout = nn.Dropout2d(decoder_dropout) if decoder_dropout > 0.0 else None
+        if segmentation_head_dropout > 0.0:
+            self.segmentation_head = nn.Sequential(
+                nn.Dropout2d(segmentation_head_dropout),
+                self.segmentation_head,
+            )
+
+    def forward(self, x):  # type: ignore[override]
+        features = self.encoder(x)
+        decoder_output = self.decoder(*features)
+        if self._decoder_dropout is not None:
+            decoder_output = self._decoder_dropout(decoder_output)
+        masks = self.segmentation_head(decoder_output)
+        if self.classification_head is not None:
+            labels = self.classification_head(features[-1])
+            return masks, labels
+        return masks
 
 
 class TomoSlabTrainer:
@@ -161,18 +193,43 @@ class TomoSlabTrainer:
         SegmentationModel
             Configured Lightning module with model, loss function, and hyperparameters.
         """
-        base_model = smp.create_model(
-            arch=self.model_arch,
-            encoder_name=self.model_encoder,
-            encoder_weights=self.encoder_weights,
-            encoder_depth=self.encoder_depth,
-            decoder_channels=self.decoder_channels,
-            decoder_attention_type=self.decoder_attention_type,
-            classes=self.classes, in_channels=self.in_channels,
-            activation=None,
-            aux_params={'classes':1,
-                        'dropout':config.MODEL_CONFIG['dropout']}
-        )
+        decoder_dropout = config.MODEL_CONFIG.get('decoder_dropout', 0.0)
+        head_dropout = config.MODEL_CONFIG.get('segmentation_head_dropout', 0.0)
+        aux_dropout = config.MODEL_CONFIG.get('dropout', 0.0)
+
+        if self.model_arch.lower() == "unet":
+            aux_params = {'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None
+            base_model = UnetWithDropout(
+                encoder_name=self.model_encoder,
+                encoder_depth=self.encoder_depth,
+                encoder_weights=self.encoder_weights,
+                decoder_channels=tuple(self.decoder_channels),
+                decoder_attention_type=self.decoder_attention_type,
+                classes=self.classes,
+                in_channels=self.in_channels,
+                activation=None,
+                aux_params=aux_params,
+                decoder_dropout=decoder_dropout,
+                segmentation_head_dropout=head_dropout,
+            )
+        else:
+            base_model = smp.create_model(
+                arch=self.model_arch,
+                encoder_name=self.model_encoder,
+                encoder_weights=self.encoder_weights,
+                encoder_depth=self.encoder_depth,
+                decoder_channels=self.decoder_channels,
+                decoder_attention_type=self.decoder_attention_type,
+                classes=self.classes,
+                in_channels=self.in_channels,
+                activation=None,
+                aux_params={'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None,
+            )
+            if head_dropout > 0.0:
+                base_model.segmentation_head = nn.Sequential(
+                    nn.Dropout2d(head_dropout),
+                    base_model.segmentation_head,
+                )
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
@@ -196,7 +253,7 @@ class TomoSlabTrainer:
             learning rate monitoring, and optional SWA/dynamic training management.
         """
         checkpointer = ModelCheckpoint(
-            monitor=constants.MONITOR_METRIC, mode="min",
+            monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE,
             filename=f"best-{{epoch}}-{{{constants.MONITOR_METRIC}:.4f}}",
             save_top_k=config.CHECKPOINT_SAVE_TOP_K, verbose=(self.global_rank == 0),
         )
@@ -207,14 +264,14 @@ class TomoSlabTrainer:
         if config.USE_DYNAMIC_MANAGER:
             if self.global_rank == 0: print("Using DynamicTrainingManager for adaptive SWA and Early Stopping.")
             callbacks.append(DynamicTrainingManager(
-                monitor=constants.MONITOR_METRIC, mode="min", ema_alpha=config.EMA_ALPHA,
+                monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE, ema_alpha=config.EMA_ALPHA,
                 trigger_swa_patience=config.SWA_TRIGGER_PATIENCE,
                 early_stop_patience=config.EARLY_STOP_PATIENCE, min_delta=config.EARLY_STOP_MIN_DELTA
             ))
         else:
             if self.global_rank == 0: print("Using standard EarlyStopping callback.")
             callbacks.append(EarlyStopping(
-                monitor=constants.MONITOR_METRIC, mode="min", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
+                monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE, patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
                 min_delta=config.EARLY_STOP_MIN_DELTA, verbose=(self.global_rank == 0),
             ))
         if constants.USE_SWA:

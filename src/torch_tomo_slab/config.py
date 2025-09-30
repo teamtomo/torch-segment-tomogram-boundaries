@@ -36,7 +36,12 @@ MODEL_CONFIG: dict[str, any] = {
     'decoder_attention_type': 'scse',
     'classes': 1,
     'in_channels': 1,
-    'dropout': 0.1
+    # Dropout applied to the optional aux/classification head retained for parity
+    'dropout': 0.1,
+    # Decoder activations (pre-final head) dropout to combat overfitting
+    'decoder_dropout': 0.2,
+    # Dropout inserted immediately before the segmentation head convolution
+    'segmentation_head_dropout': 0.1,
 }
 
 # --- Loss Function Configuration ---
@@ -47,7 +52,7 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.02,  # Softer smoothing to reduce overconfidence
+        'label_smoothing': 0.0,  # Disable smoothing to reduce boundary loss inflation
         'gradient_weight': 10,
     }
 }
@@ -92,7 +97,8 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "ReduceLROnPlateau",
     "params": {
-        "patience": 4  # Higher floor to prevent numerical collapse at low LR
+        "patience": 4,
+        "mode": "max",
     },
-    "monitor": "val_loss"
+    "monitor": "val_dice"
 }

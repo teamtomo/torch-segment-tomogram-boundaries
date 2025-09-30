@@ -58,6 +58,8 @@ def objective(trial: optuna.Trial) -> float:
 
     # Monkey-patch config values that are not direct trainer args
     config.MODEL_CONFIG['dropout'] = dropout
+    config.MODEL_CONFIG['decoder_dropout'] = dropout
+    config.MODEL_CONFIG['segmentation_head_dropout'] = dropout
     config.BATCH_SIZE = batch_size
     
     # This is now controlled by CUDA_VISIBLE_DEVICES, so pl.Trainer will get devices=1

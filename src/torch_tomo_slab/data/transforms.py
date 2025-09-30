@@ -122,12 +122,12 @@ def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> 
             A.RandomBrightnessContrast(
                 brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
                 contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
-                p=0.7  # Reduced probability
+                p=0.3
             ),
 
             A.RandomGamma(
                 gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (90, 110)
-                p=0.7
+                p=0.4
             ),
 
             MissingWedge(angle_range=(30, 70.0), p=0.3),
