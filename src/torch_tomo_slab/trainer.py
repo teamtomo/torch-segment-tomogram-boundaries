@@ -180,14 +180,23 @@ class TomoSlabTrainer:
             aux_params=aux_params,
         )
 
-        dropout_stack: list[nn.Module] = []
         if decoder_dropout and decoder_dropout > 0.0:
-            dropout_stack.append(nn.Dropout2d(decoder_dropout))
+            base_model.decoder.dropout = nn.Dropout2d(decoder_dropout)
+
+            def _decoder_dropout_hook(module: nn.Module, inputs, output):
+                return module.dropout(output)  # type: ignore[attr-defined]
+
+            base_model.decoder.register_forward_hook(_decoder_dropout_hook)
+            if self.global_rank == 0:
+                print(f"Decoder dropout enabled (p={decoder_dropout}).")
+
         if head_dropout and head_dropout > 0.0:
-            dropout_stack.append(nn.Dropout2d(head_dropout))
-        if dropout_stack:
-            dropout_stack.append(base_model.segmentation_head)
-            base_model.segmentation_head = nn.Sequential(*dropout_stack)
+            base_model.segmentation_head = nn.Sequential(
+                nn.Dropout2d(head_dropout),
+                base_model.segmentation_head,
+            )
+            if self.global_rank == 0:
+                print(f"Segmentation head dropout enabled (p={head_dropout}).")
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
