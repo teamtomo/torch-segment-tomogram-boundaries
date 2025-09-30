@@ -26,38 +26,6 @@ from torch_tomo_slab.callbacks import DynamicTrainingManager
 from torch_tomo_slab.data.dataloading import SegmentationDataModule
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
-
-
-class UnetWithDropout(smp.Unet):
-    """smp.Unet variant that injects configurable dropout before the head."""
-
-    def __init__(
-        self,
-        *args,
-        decoder_dropout: float = 0.0,
-        segmentation_head_dropout: float = 0.0,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self._decoder_dropout = nn.Dropout2d(decoder_dropout) if decoder_dropout > 0.0 else None
-        if segmentation_head_dropout > 0.0:
-            self.segmentation_head = nn.Sequential(
-                nn.Dropout2d(segmentation_head_dropout),
-                self.segmentation_head,
-            )
-
-    def forward(self, x):  # type: ignore[override]
-        features = self.encoder(x)
-        decoder_output = self.decoder(*features[1:])
-        if self._decoder_dropout is not None:
-            decoder_output = self._decoder_dropout(decoder_output)
-        masks = self.segmentation_head(decoder_output)
-        if self.classification_head is not None:
-            labels = self.classification_head(features[-1])
-            return masks, labels
-        return masks
-
-
 class TomoSlabTrainer:
     """
     Complete training pipeline for tomographic boundary segmentation models.
@@ -197,39 +165,29 @@ class TomoSlabTrainer:
         head_dropout = config.MODEL_CONFIG.get('segmentation_head_dropout', 0.0)
         aux_dropout = config.MODEL_CONFIG.get('dropout', 0.0)
 
-        if self.model_arch.lower() == "unet":
-            aux_params = {'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None
-            base_model = UnetWithDropout(
-                encoder_name=self.model_encoder,
-                encoder_depth=self.encoder_depth,
-                encoder_weights=self.encoder_weights,
-                decoder_channels=tuple(self.decoder_channels),
-                decoder_attention_type=self.decoder_attention_type,
-                classes=self.classes,
-                in_channels=self.in_channels,
-                activation=None,
-                aux_params=aux_params,
-                decoder_dropout=decoder_dropout,
-                segmentation_head_dropout=head_dropout,
-            )
-        else:
-            base_model = smp.create_model(
-                arch=self.model_arch,
-                encoder_name=self.model_encoder,
-                encoder_weights=self.encoder_weights,
-                encoder_depth=self.encoder_depth,
-                decoder_channels=self.decoder_channels,
-                decoder_attention_type=self.decoder_attention_type,
-                classes=self.classes,
-                in_channels=self.in_channels,
-                activation=None,
-                aux_params={'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None,
-            )
-            if head_dropout > 0.0:
-                base_model.segmentation_head = nn.Sequential(
-                    nn.Dropout2d(head_dropout),
-                    base_model.segmentation_head,
-                )
+        aux_params = {'classes': 1, 'dropout': aux_dropout} if aux_dropout is not None else None
+
+        base_model = smp.create_model(
+            arch=self.model_arch,
+            encoder_name=self.model_encoder,
+            encoder_weights=self.encoder_weights,
+            encoder_depth=self.encoder_depth,
+            decoder_channels=self.decoder_channels,
+            decoder_attention_type=self.decoder_attention_type,
+            classes=self.classes,
+            in_channels=self.in_channels,
+            activation=None,
+            aux_params=aux_params,
+        )
+
+        dropout_stack: list[nn.Module] = []
+        if decoder_dropout and decoder_dropout > 0.0:
+            dropout_stack.append(nn.Dropout2d(decoder_dropout))
+        if head_dropout and head_dropout > 0.0:
+            dropout_stack.append(nn.Dropout2d(head_dropout))
+        if dropout_stack:
+            dropout_stack.append(base_model.segmentation_head)
+            base_model.segmentation_head = nn.Sequential(*dropout_stack)
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
