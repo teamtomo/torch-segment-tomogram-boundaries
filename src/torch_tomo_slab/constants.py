@@ -14,10 +14,10 @@ FINAL_CROP_SIZE = 512
 TARGET_VOLUME_SHAPE = (256, 512, 512)
 
 # Number of 2D slices to extract from each 3D volume in script 02
-NUM_SECTIONS_PER_VOLUME = 400
+NUM_SECTIONS_PER_VOLUME = 50
 
 MODEL_ENCODER = MODEL_CONFIG['encoder_name']
-MONITOR_METRIC: str = "val_dice"
+MONITOR_METRIC: str = "val_loss"
 LOG_EVERY_N_STEPS: int = 10
 CHECK_VAL_EVERY_N_EPOCH: int = 1
 # --- STOCHASTIC WEIGHT AVERAGING (SWA) ---

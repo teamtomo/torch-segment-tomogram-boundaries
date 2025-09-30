@@ -94,5 +94,5 @@ SCHEDULER_CONFIG: dict[str, any] = {
     "params": {
         "patience":4  # Higher floor to prevent numerical collapse at low LR
     },
-    "monitor": "val_dice"
+    "monitor": "val_loss"
 }

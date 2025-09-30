@@ -196,7 +196,7 @@ class TomoSlabTrainer:
             learning rate monitoring, and optional SWA/dynamic training management.
         """
         checkpointer = ModelCheckpoint(
-            monitor=constants.MONITOR_METRIC, mode="max",
+            monitor=constants.MONITOR_METRIC, mode="min",
             filename=f"best-{{epoch}}-{{{constants.MONITOR_METRIC}:.4f}}",
             save_top_k=config.CHECKPOINT_SAVE_TOP_K, verbose=(self.global_rank == 0),
         )
@@ -207,14 +207,14 @@ class TomoSlabTrainer:
         if config.USE_DYNAMIC_MANAGER:
             if self.global_rank == 0: print("Using DynamicTrainingManager for adaptive SWA and Early Stopping.")
             callbacks.append(DynamicTrainingManager(
-                monitor=constants.MONITOR_METRIC, mode="max", ema_alpha=config.EMA_ALPHA,
+                monitor=constants.MONITOR_METRIC, mode="min", ema_alpha=config.EMA_ALPHA,
                 trigger_swa_patience=config.SWA_TRIGGER_PATIENCE,
                 early_stop_patience=config.EARLY_STOP_PATIENCE, min_delta=config.EARLY_STOP_MIN_DELTA
             ))
         else:
             if self.global_rank == 0: print("Using standard EarlyStopping callback.")
             callbacks.append(EarlyStopping(
-                monitor=constants.MONITOR_METRIC, mode="max", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
+                monitor=constants.MONITOR_METRIC, mode="min", patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
                 min_delta=config.EARLY_STOP_MIN_DELTA, verbose=(self.global_rank == 0),
             ))
         if constants.USE_SWA:
