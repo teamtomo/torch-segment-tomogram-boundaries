@@ -181,11 +181,14 @@ class TomoSlabTrainer:
         )
 
         if decoder_dropout and decoder_dropout > 0.0:
-            base_model.decoder.dropout = nn.Dropout2d(decoder_dropout)
+            base_model.decoder._dropout_layer = nn.Dropout2d(decoder_dropout)
+            original_forward = base_model.decoder.forward
 
-            base_model.decoder.register_forward_post_hook(
-                lambda module, inputs, output: module.dropout(output)  # type: ignore[attr-defined]
-            )
+            def forward_with_dropout(self, *args, **kwargs):
+                decoder_output = original_forward(*args, **kwargs)
+                return self._dropout_layer(decoder_output)
+
+            base_model.decoder.forward = forward_with_dropout.__get__(base_model.decoder, base_model.decoder.__class__)
             if self.global_rank == 0:
                 print(f"Decoder dropout enabled (p={decoder_dropout}).")
 
