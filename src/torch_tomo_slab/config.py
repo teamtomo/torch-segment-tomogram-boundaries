@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 2e-4
+LEARNING_RATE: float = 4e-5
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 0
@@ -30,7 +30,7 @@ WARMUP_EPOCHS: int = 0
 MODEL_CONFIG: dict[str, any] = {
     'in_channels': 1,
     'out_channels': 1,
-    'channels': (32, 64, 128, 256, 512),
+    'channels': (32, 64, 128, 256),
     'strides': (2, 2, 2, 2),
     'num_res_units': 2,
     'dropout': 0.1,
@@ -48,7 +48,7 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.0,  # Disable smoothing to reduce boundary loss inflation
+        'label_smoothing': 0.1,  # Disable smoothing to reduce boundary loss inflation
         'gradient_weight': 10,
     }
 }

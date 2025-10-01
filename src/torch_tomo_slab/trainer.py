@@ -149,7 +149,6 @@ class TomoSlabTrainer:
         loss_fn = get_loss_function(self.loss_config)
         if self.global_rank == 0:
             loss_name = getattr(loss_fn, 'name', loss_fn.__class__.__name__)
-            print(f"Using Model: {self.model_arch}-{self.model_encoder} (ImageNet pre-trained)")
             print(f"Using Loss Function: {loss_name}")
             print("Using enhanced augmentations without cropping for consistent train/val pipeline")
         return SegmentationModel(
@@ -217,11 +216,11 @@ class TomoSlabTrainer:
         pl_model = self._setup_model()
 
         if self.global_rank == 0: print("--- Configuring Logger and Callbacks ---")
-        experiment_name = f"{self.model_arch}-{self.model_encoder}"
+        experiment_name = "unet-monai"
         experiment_details = f"loss-{self.loss_config['name'].replace('+', '_')}"
         logger = TensorBoardLogger(
             save_dir=self.ckpt_save_dir,
-            name=f"{experiment_name}--{experiment_details}"
+            name=f"{experiment_name}-{experiment_details}"
         )
 
         callbacks = self._setup_callbacks()
