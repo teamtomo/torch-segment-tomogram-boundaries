@@ -227,6 +227,8 @@ class TomoSlabTrainer:
         if extra_callbacks:
             callbacks.extend(extra_callbacks)
 
+        use_ddp = torch.cuda.is_available() and config.DEVICES and config.DEVICES != 1
+
         trainer_config = {
             "max_epochs": config.MAX_EPOCHS,
             "accelerator": config.ACCELERATOR,
@@ -236,7 +238,7 @@ class TomoSlabTrainer:
             "check_val_every_n_epoch": constants.CHECK_VAL_EVERY_N_EPOCH,
             "logger": logger,
             "callbacks": callbacks,
-            "strategy": "ddp_find_unused_parameters_true" if torch.cuda.is_available() else "auto",
+            "strategy": "ddp_find_unused_parameters_false" if use_ddp else "auto",
             "gradient_clip_val": 0.5,
             "gradient_clip_algorithm": "norm",
             "enable_model_summary": True,

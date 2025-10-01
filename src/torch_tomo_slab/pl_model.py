@@ -31,6 +31,7 @@ class SegmentationModel(pl.LightningModule):
 
     def _common_step(self, batch, batch_idx, stage: str):
         image, label, weight_map = batch['image'], batch['label'], batch['weight_map']
+        target_for_loss = batch.get('soft_label', label)
         batch_size = image.size(0)
         model_output = self(image)
         # Handle both single output and tuple output (when using aux_params)
@@ -41,7 +42,7 @@ class SegmentationModel(pl.LightningModule):
         effective_weight_map = weight_map
         if stage == 'val' and not getattr(config, 'USE_WEIGHT_MAP_FOR_VALIDATION', True):
             effective_weight_map = None
-        loss = self.criterion(pred_logits, label, effective_weight_map)
+        loss = self.criterion(pred_logits, target_for_loss, effective_weight_map)
         self.log(f'{stage}_loss', loss, prog_bar=True, on_step=(stage == 'train'), on_epoch=True, batch_size=batch_size,
                  sync_dist=True)
         
@@ -140,10 +141,12 @@ class SegmentationModel(pl.LightningModule):
                 "interval": "epoch",
                 "frequency": 1,
             }
-            
+
             scheduler_monitor = scheduler_config.get("monitor")
             if scheduler_monitor:
                 lr_scheduler_config["monitor"] = scheduler_monitor
+            if scheduler_name == "ReduceLROnPlateau":
+                lr_scheduler_config["reduce_on_plateau"] = True
 
         return {
             "optimizer": optimizer,

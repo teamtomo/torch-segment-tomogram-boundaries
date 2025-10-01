@@ -23,7 +23,9 @@ class MissingWedge(A.ImageOnlyTransform):
     """
 
     def __init__(self, angle_range=(40.0, 60.0), always_apply=False, p=0.5):
-        super().__init__(always_apply=always_apply, p=p)
+        effective_p = 1.0 if always_apply else p
+        super().__init__(p=effective_p)
+        self.always_apply = always_apply
         self.angle_range = angle_range
 
     def apply(self, img, **params):

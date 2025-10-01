@@ -1,18 +1,21 @@
 # src/torch_tomo_slab/data/dataset.py
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import albumentations as A
+import numpy as np
 import torch
 from albumentations.pytorch import ToTensorV2
+from scipy.ndimage import gaussian_filter
 from torch.utils.data import Dataset
 
+from torch_tomo_slab import config
 from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
 
 
 class PTFileDataset(Dataset):
-    def __init__(self, pt_file_paths: List[Path], transform: Optional[A.Compose] = None):
+    def __init__(self, pt_file_paths: List[Path], transform: A.Compose | None = None):
         self.pt_file_paths = pt_file_paths
         self.transform = transform
         self.to_tensor = ToTensorV2()
@@ -32,14 +35,27 @@ class PTFileDataset(Dataset):
             image_np = transformed['image']
             label_np = transformed['mask']
 
-        weight_map_np = generate_boundary_weight_map(label_np)
+        label_binary_np = (label_np > 0.5).astype(np.float32)
+
+        if config.USE_GAUSSIAN_LABEL_SMOOTHING and config.GAUSSIAN_LABEL_SIGMA > 0:
+            soft_label_np = gaussian_filter(label_binary_np, sigma=config.GAUSSIAN_LABEL_SIGMA)
+            soft_label_np = np.clip(soft_label_np, 0.0, 1.0)
+        else:
+            soft_label_np = label_binary_np
+
+        weight_map_np = generate_boundary_weight_map(
+            label_binary_np,
+            boundary_width=config.WEIGHT_MAP_BOUNDARY_WIDTH,
+        )
 
         image_tensor = self.to_tensor(image=image_np)['image']
-        label_tensor = self.to_tensor(image=label_np)['image']
+        label_tensor = self.to_tensor(image=label_binary_np)['image'].float()
+        soft_label_tensor = self.to_tensor(image=soft_label_np)['image'].float()
         weight_map_tensor = self.to_tensor(image=weight_map_np)['image']
 
         return {
             'image': image_tensor.float(),
-            'label': label_tensor.long(),
+            'label': label_tensor,
+            'soft_label': soft_label_tensor,
             'weight_map': weight_map_tensor.float()
         }

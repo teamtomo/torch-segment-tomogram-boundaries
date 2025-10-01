@@ -48,10 +48,15 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.1,  # Disable smoothing to reduce boundary loss inflation
+        'label_smoothing': 0.05,  # Re-enabled smoothing to soften boundary transitions
         'gradient_weight': 10,
     }
 }
+
+# Optional Gaussian smoothing applied to labels before computing losses.
+USE_GAUSSIAN_LABEL_SMOOTHING: bool = True
+GAUSSIAN_LABEL_SIGMA: float = 0.75
+WEIGHT_MAP_BOUNDARY_WIDTH: int = 1
 
 # --- DATALOADER & AUGMENTATION ---
 BATCH_SIZE: int = 8
@@ -93,8 +98,13 @@ USE_LR_SCHEDULER: bool = True
 SCHEDULER_CONFIG: dict[str, any] = {
     "name": "ReduceLROnPlateau",
     "params": {
+        "factor": 0.5,
         "patience": 4,
         "mode": "max",
+        "threshold": 1e-3,
+        "threshold_mode": "rel",
+        "cooldown": 0,
+        "min_lr": 1e-7,
     },
     "monitor": "val_dice"
 }
