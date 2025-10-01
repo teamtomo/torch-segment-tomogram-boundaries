@@ -16,13 +16,11 @@ from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
-    StochasticWeightAveraging,
     TQDMProgressBar,
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from torch_tomo_slab import config, constants
-from torch_tomo_slab.callbacks import DynamicTrainingManager
 from torch_tomo_slab.data.dataloading import SegmentationDataModule
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
@@ -36,9 +34,9 @@ class TomoSlabTrainer:
     using PyTorch Lightning.
     
     The trainer supports:
-    - Configurable model architectures from segmentation-models-pytorch
+    - Configurable MONAI-based model architectures
     - Multiple loss functions with automatic selection
-    - Advanced training features (SWA, dynamic management, early stopping)
+    - Standard early stopping and checkpointing callbacks
     - Multi-GPU training and mixed precision
     - Comprehensive logging and checkpointing
     
@@ -165,7 +163,7 @@ class TomoSlabTrainer:
         -------
         List[pl.Callback]
             List of configured callbacks including checkpointing, early stopping,
-            learning rate monitoring, and optional SWA/dynamic training management.
+            and learning rate monitoring.
         """
         checkpointer = ModelCheckpoint(
             monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE,
@@ -176,23 +174,15 @@ class TomoSlabTrainer:
         progress_bar = TQDMProgressBar(refresh_rate=10)
         callbacks = [progress_bar, checkpointer, lr_monitor]
 
-        if config.USE_DYNAMIC_MANAGER:
-            if self.global_rank == 0: print("Using DynamicTrainingManager for adaptive SWA and Early Stopping.")
-            callbacks.append(DynamicTrainingManager(
-                monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE, ema_alpha=config.EMA_ALPHA,
-                trigger_swa_patience=config.SWA_TRIGGER_PATIENCE,
-                early_stop_patience=config.EARLY_STOP_PATIENCE, min_delta=config.EARLY_STOP_MIN_DELTA
-            ))
-        else:
-            if self.global_rank == 0: print("Using standard EarlyStopping callback.")
-            callbacks.append(EarlyStopping(
-                monitor=constants.MONITOR_METRIC, mode=constants.MONITOR_MODE, patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
-                min_delta=config.EARLY_STOP_MIN_DELTA, verbose=(self.global_rank == 0),
-            ))
-        if constants.USE_SWA:
-            if self.global_rank == 0: print("Stochastic Weight Averaging (SWA) is enabled.")
-            swa_start = config.MAX_EPOCHS + 1 if config.USE_DYNAMIC_MANAGER else config.STANDARD_SWA_START_FRACTION
-            callbacks.append(StochasticWeightAveraging(swa_lrs=config.SWA_LEARNING_RATE, swa_epoch_start=swa_start))
+        if self.global_rank == 0:
+            print("Using standard EarlyStopping callback.")
+        callbacks.append(EarlyStopping(
+            monitor=constants.MONITOR_METRIC,
+            mode=constants.MONITOR_MODE,
+            patience=config.STANDARD_EARLY_STOPPING_PATIENCE,
+            min_delta=config.EARLY_STOP_MIN_DELTA,
+            verbose=(self.global_rank == 0),
+        ))
         return callbacks
 
     def fit(self, extra_callbacks: Optional[List[pl.Callback]] = None, extra_trainer_kwargs: Optional[Dict[str, Any]] = None) -> None:

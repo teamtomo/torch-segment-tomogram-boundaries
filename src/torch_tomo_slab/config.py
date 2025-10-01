@@ -31,7 +31,7 @@ MODEL_CONFIG: dict[str, any] = {
     'in_channels': 1,
     'out_channels': 1,
     'channels': (32, 64, 128, 256),
-    'strides': (2, 2, 2, 2),
+    'strides': (2, 2, 2),
     'num_res_units': 2,
     'dropout': 0.1,
 }
@@ -62,22 +62,14 @@ WEIGHT_MAP_BOUNDARY_WIDTH: int = 1
 BATCH_SIZE: int = 8
 NUM_WORKERS: int = 16
 
-# --- DYNAMIC TRAINING MANAGEMENT ---
-USE_DYNAMIC_MANAGER: bool = False
-EMA_ALPHA: float = 0.3                 # Lower for more stability (less responsive to noise)
-SWA_TRIGGER_PATIENCE: int = 5       # Ultra-aggressive - trigger SWA after 5 epochs of plateau
-EARLY_STOP_PATIENCE: int = 5       # Ultra-aggressive - stop after 5 epochs post-SWA
-EARLY_STOP_MIN_DELTA: float = 5e-3
-
-# --- FALLBACK: STANDARD CALLBACKS ---
-STANDARD_EARLY_STOPPING_PATIENCE: int = 6
-STANDARD_SWA_START_FRACTION: float = 0.75
+# --- EARLY STOPPING ---
+STANDARD_EARLY_STOPPING_PATIENCE: int = 10
+EARLY_STOP_MIN_DELTA: float = 1e-4
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
 # Force single GPU for Optuna trials to avoid distributed training issues
 DEVICES: int = 1 if os.environ.get('OPTUNA_TRIAL') else (torch.cuda.device_count() if torch.cuda.is_available() else 1)
-SWA_LEARNING_RATE: float = 0.05 * LEARNING_RATE # Lower SWA LR for stability
 
 # --- CHECKPOINTING ---
 CKPT_SAVE_PATH: Path = BASE_DATA_PATH/"checkpoints"

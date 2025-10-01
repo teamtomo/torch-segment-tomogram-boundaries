@@ -20,8 +20,6 @@ MONITOR_METRIC: str = "val_dice"
 MONITOR_MODE: str = "max"
 LOG_EVERY_N_STEPS: int = 10
 CHECK_VAL_EVERY_N_EPOCH: int = 1
-# --- STOCHASTIC WEIGHT AVERAGING (SWA) ---
-USE_SWA: bool = True
 
 # --- AUGMENTATION PARAMETERS ---
 AUGMENTATION_CONFIG: dict[str, any] = {
