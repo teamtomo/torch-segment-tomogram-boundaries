@@ -95,7 +95,7 @@ class EasyModeAugmentor:
             sigma = float(np.random.uniform(0.3, 1.5))
             img = gaussian_filter(img, sigma=sigma)
 
-        return img, mask
+        return self._ensure_target_shape(img, mask)
 
     def _resize_and_center_crop(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         cfg = self.dim_cfg
@@ -193,6 +193,12 @@ class EasyModeAugmentor:
             result = result[:, start:end]
 
         return result.astype(np.float32)
+
+    def _ensure_target_shape(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        target_shape = (self.dim_cfg.target_height, self.dim_cfg.target_width)
+        if img.shape != target_shape:
+            img, mask = self._match_shape(img, mask, target_shape)
+        return img, mask
 
 
 def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> EasyModeAugmentor:
