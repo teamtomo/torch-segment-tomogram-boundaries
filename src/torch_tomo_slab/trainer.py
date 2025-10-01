@@ -24,6 +24,9 @@ from torch_tomo_slab import config, constants
 from torch_tomo_slab.data.dataloading import SegmentationDataModule
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
+from torch_tomo_slab.utils.common import save_config_snapshot
+
+
 class TomoSlabTrainer:
     """
     Complete training pipeline for tomographic boundary segmentation models.
@@ -212,6 +215,10 @@ class TomoSlabTrainer:
             save_dir=self.ckpt_save_dir,
             name=f"{experiment_name}-{experiment_details}"
         )
+
+        if self.global_rank == 0:
+            snapshot_path = save_config_snapshot(Path(logger.log_dir))
+            print(f"Config snapshot saved to: {snapshot_path}")
 
         callbacks = self._setup_callbacks()
         if extra_callbacks:

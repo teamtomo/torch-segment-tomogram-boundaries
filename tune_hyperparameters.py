@@ -2,7 +2,7 @@
 Hyperparameter tuning script for torch-tomo-slab using Optuna.
 
 This script performs hyperparameter optimization for the segmentation model.
-It tunes the learning rate, decoder channel size, dropout, and batch size.
+It tunes the learning rate, base channel width, network dropout, and batch size.
 The script is designed to be run on a machine with at least one GPU.
 
 Prerequisites:
@@ -26,43 +26,44 @@ import os
 import sys
 import argparse
 import traceback
+from copy import deepcopy
 from pathlib import Path
 
 import optuna
 import torch
-from optuna.integration import PyTorchLightningPruningCallback
 
 # Add src to path to allow imports
 sys.path.append(str(Path(__file__).parent / "src"))
 
-from torch_tomo_slab import config, constants
+from torch_tomo_slab import config
 from torch_tomo_slab.trainer import TomoSlabTrainer
 
 
 def objective(trial: optuna.Trial) -> float:
     """Optuna objective function."""
 
-    # Hyperparameter suggestions
-    learning_rate = trial.suggest_float("learning_rate", 5e-6, 5e-4, log=True)
-    dropout = trial.suggest_float("dropout", 0.1, 0.5)
-    batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64])
+    # Hyperparameter suggestions scoped to the MONAI setup
+    learning_rate = trial.suggest_float("learning_rate", 2e-5, 8e-5, log=True)
+    dropout = trial.suggest_float("dropout", 0.08, 0.2)
+    batch_size = trial.suggest_categorical("batch_size", [4, 6, 8])
+    base_width = trial.suggest_categorical("base_width", [32, 40, 48])
 
-    decoder_config = trial.suggest_categorical("decoder_channels", ["small", "medium", "large"])
+    # Snapshot originals so we can restore them after the trial
+    original_model_config = deepcopy(config.MODEL_CONFIG)
+    original_batch_size = config.BATCH_SIZE
+    original_learning_rate = config.LEARNING_RATE
+    original_devices = config.DEVICES
 
-    decoder_channels_map = {
-        "small": [128, 64, 32, 16, 8],
-        "medium": [256, 128, 64, 32, 16],
-        "large": [512, 256, 128, 64, 32],
-    }
-    decoder_channels = decoder_channels_map[decoder_config]
-
-    # Monkey-patch config values that are not direct trainer args
+    # Update configuration for this trial
     config.MODEL_CONFIG['dropout'] = dropout
-    config.MODEL_CONFIG['decoder_dropout'] = dropout
-    config.MODEL_CONFIG['segmentation_head_dropout'] = dropout
+    depth = len(config.MODEL_CONFIG.get('channels', ())) or len(original_model_config.get('channels', ()))
+    if depth == 0:
+        depth = 4
+    config.MODEL_CONFIG['channels'] = tuple(base_width * (2 ** i) for i in range(depth))
     config.BATCH_SIZE = batch_size
-    
-    # This is now controlled by CUDA_VISIBLE_DEVICES, so pl.Trainer will get devices=1
+    config.LEARNING_RATE = learning_rate
+
+    # Ensure single-device training inside trials
     config.DEVICES = 1
 
     metric = 0.0
@@ -71,6 +72,8 @@ def objective(trial: optuna.Trial) -> float:
         print(f"Starting Trial {trial.number}")
         print(f"  - BASE_DATA_PATH: {config.BASE_DATA_PATH}")
         print(f"  - CKPT_SAVE_PATH: {config.CKPT_SAVE_PATH}")
+        print(f"  - Params: lr={learning_rate:.2e}, dropout={dropout:.2f}, batch_size={batch_size}, base_width={base_width}")
+        print(f"  - Channels: {config.MODEL_CONFIG['channels']}")
         
         # Each trial gets its own checkpoint directory
         ckpt_dir = config.CKPT_SAVE_PATH / f"trial_{trial.number}"
@@ -79,22 +82,11 @@ def objective(trial: optuna.Trial) -> float:
 
         trainer = TomoSlabTrainer(
             learning_rate=learning_rate,
-            decoder_channels=decoder_channels,
-            model_arch=config.MODEL_CONFIG['arch'],
-            model_encoder=config.MODEL_CONFIG['encoder_name'],
-            encoder_weights=config.MODEL_CONFIG['encoder_weights'],
-            encoder_depth=config.MODEL_CONFIG['encoder_depth'],
-            decoder_attention_type=config.MODEL_CONFIG['decoder_attention_type'],
-            classes=config.MODEL_CONFIG['classes'],
-            in_channels=config.MODEL_CONFIG['in_channels'],
             loss_config=config.LOSS_CONFIG,
             train_data_dir=config.TRAIN_DATA_DIR,
             val_data_dir=config.VAL_DATA_DIR,
             ckpt_save_dir=ckpt_dir
         )
-
-        # Pruning callback is disabled to resolve a version conflict.
-        # pruning_callback = PyTorchLightningPruningCallback(trial, monitor=constants.MONITOR_METRIC)
 
         trainer.fit(extra_callbacks=None)
 
@@ -113,6 +105,13 @@ def objective(trial: optuna.Trial) -> float:
         print(f"Trial {trial.number} failed with a detailed traceback:")
         traceback.print_exc()
         return 0.0  # Report failure to Optuna
+    finally:
+        # Restore original configuration for subsequent trials
+        config.MODEL_CONFIG.clear()
+        config.MODEL_CONFIG.update(original_model_config)
+        config.BATCH_SIZE = original_batch_size
+        config.LEARNING_RATE = original_learning_rate
+        config.DEVICES = original_devices
 
     return metric
 
