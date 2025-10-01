@@ -1,155 +1,200 @@
-import albumentations as A
+"""Augmentation pipeline derived from Easymode cryoET utilities."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Tuple
+
 import cv2
 import numpy as np
+from scipy.ndimage import gaussian_filter, rotate as nd_rotate, zoom
 
 from torch_tomo_slab import constants
-from numpy.fft import fft2, ifft2, fftshift, ifftshift
+from torch_tomo_slab.data.easymode_fourier import (
+    MissingWedgeMaskAndFourierAmplitudeMatching2D,
+)
 
 
-class MissingWedge(A.ImageOnlyTransform):
-    """
-    Applies a missing wedge artifact to a 2D image in Fourier space.
-
-    This augmentation simulates the data loss seen in tomography. It does so by:
-    1. Transforming the image to Fourier space (frequency domain).
-    2. Creating a wedge-shaped mask at a random orientation.
-    3. Setting the frequency components within the wedge to zero.
-    4. Transforming the image back to the spatial domain.
-
-    Args:
-        angle_range (tuple): A (min, max) tuple for the missing wedge angle in degrees.
-                             A larger angle means more data is removed.
-        p (float): The probability of applying the transform.
-    """
-
-    def __init__(self, angle_range=(40.0, 60.0), always_apply=False, p=0.5):
-        effective_p = 1.0 if always_apply else p
-        super().__init__(p=effective_p)
-        self.always_apply = always_apply
-        self.angle_range = angle_range
-
-    def apply(self, img, **params):
-        # 1. Randomly determine the parameters for this specific image
-        wedge_angle = np.random.uniform(self.angle_range[0], self.angle_range[1])
-        # Randomize the orientation of the wedge from 0 to 180 degrees
-        rotation_angle = np.random.uniform(0, 180)
-
-        # 2. Perform the forward Fourier Transform
-        fft_img = fftshift(fft2(img))
-        h, w = np.squeeze(img,axis=-1).shape
-
-        # 3. Create a coordinate grid in Fourier space
-        ch, cw = h / 2, w / 2
-        y_coords, x_coords = np.indices(np.squeeze(img,axis=-1).shape)
-        x_coords = x_coords - cw
-        y_coords = y_coords - ch
-
-        # 4. Rotate the coordinate system to orient the wedge
-        rotation_rad = np.deg2rad(rotation_angle)
-        cos_theta = np.cos(rotation_rad)
-        sin_theta = np.sin(rotation_rad)
-        x_rotated = x_coords * cos_theta + y_coords * sin_theta
-
-        # 5. Create the wedge mask using the rotated coordinates
-        # The wedge is defined by an angle around the y-axis in the rotated frame
-        wedge_angle_rad = np.deg2rad(wedge_angle)
-        mask = np.abs(np.arctan2(x_rotated, y_coords * sin_theta - x_coords * cos_theta)) > (wedge_angle_rad / 2)
-
-        # 6. Apply the mask to erase data in the frequency domain
-        fft_img[~mask] = 0
-
-        # 7. Perform the inverse Fourier Transform
-        img_reconstructed = ifft2(ifftshift(fft_img))
-
-        # Return the real part, ensuring it has the same data type
-        return np.real(img_reconstructed).astype(img.dtype)
-
-    def get_transform_init_args_names(self):
-        return ("angle_range",)
+@dataclass
+class DimensionConfig:
+    buffer_height: int
+    buffer_width: int
+    target_height: int
+    target_width: int
 
 
-def scale_to_0_1(img, **kwargs):
-    """Scales a numpy array to the [0, 1] range."""
-    min_val = img.min()
-    max_val = img.max()
+TRAIN_ROT_LIMIT_DEGREES = 10.0
+
+
+def scale_to_0_1(img: np.ndarray) -> np.ndarray:
+    """Scale numpy array to the [0, 1] range with safe guarding for zero variance."""
+    img = img.astype(np.float32)
+    min_val = float(img.min())
+    max_val = float(img.max())
     if max_val - min_val > 1e-6:
         img = (img - min_val) / (max_val - min_val)
+    else:
+        img = img - min_val
     return img.astype(np.float32)
 
-def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> A.Compose:
-    """
-    Dimension-consistent augmentation pipeline for 256x512 tomography images.
-    
-    Key improvements:
-    - Guaranteed output dimensions via Resize + CenterCrop strategy
-    - Removed vertical flips that break tomography orientation
-    - Conservative scaling/rotation to prevent dimension instability
-    - No additional random crops; rely on affine jitter only
-    
-    Args:
-        is_training: If True, apply stochastic augmentations for regularization
-        use_balanced_crop: Ignored (legacy parameter for API compatibility)
-    """
-    
-    if is_training:
-        # Dimension-first augmentation strategy for training stability
-        transform_list = [
-            # === STEP 1: NORMALIZE ===
-            A.Lambda(image=scale_to_0_1, name="scale_to_0_1", p=1.0),
-            
-            # === STEP 2: ESTABLISH CONSISTENT DIMENSIONS ===
-            A.Resize(
-                height=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_HEIGHT'],  # 288
-                width=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_WIDTH'],    # 576
-                p=1.0
-            ),
-            A.CenterCrop(
-                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
-                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
-                p=1.0
-            ),
-            A.HorizontalFlip(p=0.5),
-            # Conservative rotation for rectangular images
-            A.Rotate(
-                limit=constants.AUGMENTATION_CONFIG['ROTATE_LIMIT'],
-                p=0.7,
-                border_mode=cv2.BORDER_REFLECT_101,
-                interpolation=cv2.INTER_LINEAR
-            ),
-            A.Affine(
-                scale=constants.AUGMENTATION_CONFIG['AFFINE_SCALE_RANGE'],
-                p=0.5,
-                border_mode=cv2.BORDER_REFLECT_101
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
-                contrast_limit=constants.AUGMENTATION_CONFIG['BRIGHTNESS_CONTRAST_LIMIT'],
-                p=0.3
-            ),
 
-            A.RandomGamma(
-                gamma_limit=constants.AUGMENTATION_CONFIG['GAMMA_LIMIT'],  # (90, 110)
-                p=0.4
-            ),
+class EasyModeAugmentor:
+    """Easymode-inspired augmentation pipeline for 2D orthogonal slabs."""
 
-            MissingWedge(angle_range=(30, 70.0), p=0.3),
-            
+    def __init__(self, is_training: bool = True) -> None:
+        cfg = constants.AUGMENTATION_CONFIG
+        self.dim_cfg = DimensionConfig(
+            buffer_height=cfg["RESIZE_BUFFER_HEIGHT"],
+            buffer_width=cfg["RESIZE_BUFFER_WIDTH"],
+            target_height=cfg["TARGET_HEIGHT"],
+            target_width=cfg["TARGET_WIDTH"],
+        )
+        self.is_training = is_training
+        self.missing_wedge_aug = MissingWedgeMaskAndFourierAmplitudeMatching2D(
+            amplitude_aug=True,
+            missing_wedge_aug=True,
+            missing_wedge_prob=0.4,
+            amplitude_prob=0.5,
+            sample_kernel_prob=0.7,
+        )
 
-        ]
-    else:
-        # Validation: Apply same dimensional preprocessing for consistency
-        transform_list = [
-            A.Lambda(image=scale_to_0_1, name="scale_to_0_1", p=1.0),
-            A.Resize(
-                height=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_HEIGHT'],  # 288
-                width=constants.AUGMENTATION_CONFIG['RESIZE_BUFFER_WIDTH'],    # 576
-                p=1.0
-            ),
-            A.CenterCrop(
-                height=constants.AUGMENTATION_CONFIG['TARGET_HEIGHT'],         # 256
-                width=constants.AUGMENTATION_CONFIG['TARGET_WIDTH'],           # 512
-                p=1.0
-            ),
-        ]
-    
-    return A.Compose(transform_list)
+    def __call__(self, image: np.ndarray, mask: np.ndarray) -> dict[str, np.ndarray]:
+        img_2d = np.squeeze(image).astype(np.float32)
+        mask_2d = mask.astype(np.float32)
+
+        img_2d = scale_to_0_1(img_2d)
+        img_2d, mask_2d = self._resize_and_center_crop(img_2d, mask_2d)
+
+        if self.is_training:
+            img_2d, mask_2d = self._apply_training_pipeline(img_2d, mask_2d)
+
+        img_2d = scale_to_0_1(img_2d)
+        mask_2d = np.clip(mask_2d, 0.0, 1.0)
+
+        return {
+            "image": img_2d[..., None].astype(np.float32),
+            "mask": mask_2d.astype(np.float32),
+        }
+
+    def _apply_training_pipeline(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        if np.random.rand() < 0.5:
+            img, mask = self._rotate_90(img, mask)
+
+        if np.random.rand() < 0.5:
+            img, mask = self._flip(img, mask)
+
+        if np.random.rand() < 0.35:
+            img, mask = self._continuous_rotate(img, mask)
+
+        if np.random.rand() < 0.3:
+            img, mask = self._random_zoom(img, mask)
+
+        if np.random.rand() < 0.4:
+            img = self.missing_wedge_aug(img)
+
+        if np.random.rand() < 0.25:
+            sigma = float(np.random.uniform(0.3, 1.5))
+            img = gaussian_filter(img, sigma=sigma)
+
+        return img, mask
+
+    def _resize_and_center_crop(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        cfg = self.dim_cfg
+        resized_img = cv2.resize(img, (cfg.buffer_width, cfg.buffer_height), interpolation=cv2.INTER_LINEAR)
+        resized_mask = cv2.resize(mask, (cfg.buffer_width, cfg.buffer_height), interpolation=cv2.INTER_NEAREST)
+
+        start_y = (cfg.buffer_height - cfg.target_height) // 2
+        start_x = (cfg.buffer_width - cfg.target_width) // 2
+        end_y = start_y + cfg.target_height
+        end_x = start_x + cfg.target_width
+
+        cropped_img = resized_img[start_y:end_y, start_x:end_x]
+        cropped_mask = resized_mask[start_y:end_y, start_x:end_x]
+        return cropped_img.astype(np.float32), cropped_mask.astype(np.float32)
+
+    @staticmethod
+    def _rotate_90(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        k = int(np.random.randint(0, 4))
+        if k:
+            img = np.rot90(img, k, axes=(0, 1))
+            mask = np.rot90(mask, k, axes=(0, 1))
+        return img, mask
+
+    @staticmethod
+    def _flip(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        axis = np.random.choice([None, 0, 1])
+        if axis is not None:
+            img = np.flip(img, axis=axis)
+            mask = np.flip(mask, axis=axis)
+        return img, mask
+
+    @staticmethod
+    def _continuous_rotate(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        angle = float(np.random.uniform(-TRAIN_ROT_LIMIT_DEGREES, TRAIN_ROT_LIMIT_DEGREES))
+        img_rot = nd_rotate(
+            img,
+            angle=angle,
+            axes=(0, 1),
+            order=1,
+            mode="reflect",
+            reshape=False,
+            prefilter=False,
+        )
+        mask_rot = nd_rotate(
+            mask,
+            angle=angle,
+            axes=(0, 1),
+            order=0,
+            mode="nearest",
+            reshape=False,
+            prefilter=False,
+        )
+        return img_rot.astype(np.float32), mask_rot.astype(np.float32)
+
+    def _random_zoom(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        factor = float(np.random.uniform(0.9, 1.1))
+        zoom_img = zoom(img, factor, order=1)
+        zoom_mask = zoom(mask, factor, order=0)
+        zoom_img, zoom_mask = self._match_shape(zoom_img, zoom_mask, img.shape)
+        return zoom_img.astype(np.float32), zoom_mask.astype(np.float32)
+
+    @staticmethod
+    def _match_shape(img: np.ndarray, mask: np.ndarray, target_shape: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
+        img_adj = EasyModeAugmentor._center_pad_or_crop(img, target_shape, mode="reflect")
+        mask_adj = EasyModeAugmentor._center_pad_or_crop(mask, target_shape, mode="edge")
+        return img_adj, mask_adj
+
+    @staticmethod
+    def _center_pad_or_crop(arr: np.ndarray, target_shape: Tuple[int, int], mode: str) -> np.ndarray:
+        result = arr
+        current_h, current_w = result.shape
+        target_h, target_w = target_shape
+
+        # Adjust height
+        if current_h < target_h:
+            pad_total = target_h - current_h
+            pad_top = pad_total // 2
+            pad_bottom = pad_total - pad_top
+            result = np.pad(result, ((pad_top, pad_bottom), (0, 0)), mode=mode)
+        elif current_h > target_h:
+            start = (current_h - target_h) // 2
+            end = start + target_h
+            result = result[start:end, :]
+
+        # Adjust width
+        current_h, current_w = result.shape
+        if current_w < target_w:
+            pad_total = target_w - current_w
+            pad_left = pad_total // 2
+            pad_right = pad_total - pad_left
+            result = np.pad(result, ((0, 0), (pad_left, pad_right)), mode=mode)
+        elif current_w > target_w:
+            start = (current_w - target_w) // 2
+            end = start + target_w
+            result = result[:, start:end]
+
+        return result.astype(np.float32)
+
+
+def get_transforms(is_training: bool = True, use_balanced_crop: bool = True) -> EasyModeAugmentor:
+    """Factory aligning with the previous public API."""
+    return EasyModeAugmentor(is_training=is_training)

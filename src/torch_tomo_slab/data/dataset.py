@@ -1,9 +1,8 @@
 # src/torch_tomo_slab/data/dataset.py
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
-import albumentations as A
 import numpy as np
 import torch
 from albumentations.pytorch import ToTensorV2
@@ -14,8 +13,11 @@ from torch_tomo_slab import config
 from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
 
 
+TransformType = Optional[Callable[[np.ndarray, np.ndarray], Dict[str, np.ndarray]]]
+
+
 class PTFileDataset(Dataset):
-    def __init__(self, pt_file_paths: List[Path], transform: A.Compose | None = None):
+    def __init__(self, pt_file_paths: List[Path], transform: TransformType = None):
         self.pt_file_paths = pt_file_paths
         self.transform = transform
         self.to_tensor = ToTensorV2()
