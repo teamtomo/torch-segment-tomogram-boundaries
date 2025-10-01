@@ -77,10 +77,7 @@ class EasyModeAugmentor:
 
     def _apply_training_pipeline(self, img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         if np.random.rand() < 0.5:
-            img, mask = self._rotate_90(img, mask)
-
-        if np.random.rand() < 0.5:
-            img, mask = self._flip(img, mask)
+            img, mask = self._horizontal_flip(img, mask)
 
         if np.random.rand() < 0.35:
             img, mask = self._continuous_rotate(img, mask)
@@ -112,19 +109,10 @@ class EasyModeAugmentor:
         return cropped_img.astype(np.float32), cropped_mask.astype(np.float32)
 
     @staticmethod
-    def _rotate_90(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        k = int(np.random.randint(0, 4))
-        if k:
-            img = np.rot90(img, k, axes=(0, 1))
-            mask = np.rot90(mask, k, axes=(0, 1))
-        return img, mask
-
-    @staticmethod
-    def _flip(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        axis = np.random.choice([None, 0, 1])
-        if axis is not None:
-            img = np.flip(img, axis=axis)
-            mask = np.flip(mask, axis=axis)
+    def _horizontal_flip(img: np.ndarray, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        # Preserve beam orientation by only mirroring along the width axis (axis=1).
+        img = np.flip(img, axis=1)
+        mask = np.flip(mask, axis=1)
         return img, mask
 
     @staticmethod
