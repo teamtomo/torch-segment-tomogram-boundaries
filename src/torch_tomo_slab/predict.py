@@ -569,7 +569,10 @@ class TomoSlabPredictor:
 
             # Apply weighted averaging
             if current_window.sum() > 0:
-                final_slice = torch.einsum('dwh,d->wh', predicted_slab, current_window) / current_window.sum()
+                # predicted_slab has shape (D, slab_len, W); we need to blend across the slab_len axis
+                weights = current_window.view(1, -1, 1)
+                weighted_sum = (predicted_slab * weights).sum(dim=1)
+                final_slice = weighted_sum / weights.sum()
             else:
                 # Fallback: predict single slice with the same single-channel pathway
                 slice_2d = volume_3d[:, i, :]
