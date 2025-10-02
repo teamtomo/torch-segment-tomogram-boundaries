@@ -559,13 +559,34 @@ class TomoSlabPredictor:
             start = max(0, i - half_slab)
             end = min(num_slices, i + half_slab + 1)
 
+            # Amount of padding required on each side to keep slab length static
+            expected_start = i - half_slab
+            expected_end = i + half_slab + 1
+            pad_left = max(0, -expected_start)
+            pad_right = max(0, expected_end - num_slices)
+
+            slab_3d = volume_3d[:, start:end, :]
+            if pad_left > 0 or pad_right > 0:
+                # Replicate border slices so the model always receives slab_size slices.
+                first_slice = slab_3d[:, :1, :]
+                last_slice = slab_3d[:, -1:, :]
+                if pad_left > 0:
+                    left_pad = first_slice.repeat(1, pad_left, 1)
+                    slab_3d = torch.cat((left_pad, slab_3d), dim=1)
+                if pad_right > 0:
+                    right_pad = last_slice.repeat(1, pad_right, 1)
+                    slab_3d = torch.cat((slab_3d, right_pad), dim=1)
+
             # Extract and predict slab
-            predicted_slab = self._predict_raw_slab(volume_3d[:, start:end, :], batch_size)
+            predicted_slab = self._predict_raw_slab(slab_3d, batch_size)
 
             # Calculate window indices and apply blending
-            win_start = max(0, half_slab - i)
-            win_end = min(slab_size, half_slab + (num_slices - i))
-            current_window = hann_window[win_start:win_end]
+            # Start from the full Hann window and zero padded regions so they do not contribute
+            current_window = hann_window.clone()
+            if pad_left > 0:
+                current_window[:pad_left] = 0
+            if pad_right > 0:
+                current_window[-pad_right:] = 0
 
             # Apply weighted averaging
             if current_window.sum() > 0:
