@@ -48,6 +48,7 @@ dependencies = [
     "matplotlib",
     "albumentations",
     "tensorboard",
+    "pooch",
 ]
 
 [project.urls]
