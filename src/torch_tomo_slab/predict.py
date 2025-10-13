@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 from torch_tomo_slab.models import create_unet
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from scipy.ndimage import binary_erosion
 from tqdm import tqdm
@@ -28,7 +27,7 @@ from torch_tomo_slab import config
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
 
-from torch_tomo_slab.utils import threeD, twoD
+from torch_tomo_slab.utils import threeD
 from torch_tomo_slab.utils.twoD import robust_normalization
 
 # Configure logging for prediction pipeline
@@ -608,6 +607,7 @@ def predict(
     input_tomogram: Union[str, Path, np.ndarray],
     model_checkpoint_path: Union[str, Path],
     output_path: Optional[Path] = None,
+    compile_model:bool = True,
     **predict_kwargs,
 ) -> np.ndarray:
     """
@@ -636,8 +636,7 @@ def predict(
         The final binary slab mask as a 3D numpy array.
     """
     # Initialize the predictor with the given model checkpoint
-    predictor = TomoSlabPredictor(model_checkpoint_path=model_checkpoint_path)
-
+    predictor =TomoSlabPredictor(model_checkpoint_path=model_checkpoint_path, compile_model=compile_model)
     # Run the prediction pipeline
     final_mask = predictor.predict(
         input_tomogram=input_tomogram,

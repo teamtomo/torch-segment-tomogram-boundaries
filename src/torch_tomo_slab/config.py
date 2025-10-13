@@ -21,7 +21,7 @@ TRAIN_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "train"
 VAL_DATA_DIR: Path = PREPARED_DATA_BASE_DIR / "val"
 
 # --- TRAINING HYPERPARAMETERS ---
-LEARNING_RATE: float = 4e-5
+LEARNING_RATE: float = 1e-4
 MAX_EPOCHS: int = 50
 PRECISION: str = '32'
 WARMUP_EPOCHS: int = 0
@@ -30,7 +30,7 @@ WARMUP_EPOCHS: int = 0
 MODEL_CONFIG: dict[str, any] = {
     'in_channels': 1,
     'out_channels': 1,
-    'channels': (32, 64, 128, 256),
+    'channels': (48, 96, 192, 384),
     'strides': (2, 2, 2),
     'num_res_units': 2,
     'dropout': 0.1,
@@ -48,15 +48,15 @@ LOSS_CONFIG: dict[str, any] = {
     'name': 'weighted_bce',  # Options: 'dice', 'bce', 'dice+bce', 'boundary', 'weighted_bce'.
     'weights': [0.5, 0.5],     # Only used for combined losses like 'dice+bce'
     'params': {
-        'label_smoothing': 0.05,  # Re-enabled smoothing to soften boundary transitions
-        'gradient_weight': 10,
+        'label_smoothing': 0.1,  # Re-enabled smoothing to soften boundary transitions
+        'gradient_weight': 20,
     }
 }
 
 # Optional Gaussian smoothing applied to labels before computing losses.
 USE_GAUSSIAN_LABEL_SMOOTHING: bool = True
-GAUSSIAN_LABEL_SIGMA: float = 0.75
-WEIGHT_MAP_BOUNDARY_WIDTH: int = 1
+GAUSSIAN_LABEL_SIGMA: float = 3
+WEIGHT_MAP_BOUNDARY_WIDTH: int = 4
 
 # --- DATALOADER & AUGMENTATION ---
 BATCH_SIZE: int = 8
@@ -64,7 +64,7 @@ NUM_WORKERS: int = 16
 
 # --- EARLY STOPPING ---
 STANDARD_EARLY_STOPPING_PATIENCE: int = 10
-EARLY_STOP_MIN_DELTA: float = 1e-4
+EARLY_STOP_MIN_DELTA: float = 1e-3
 
 # --- PL TRAINER & INFRASTRUCTURE ---
 ACCELERATOR: str = "auto"
@@ -80,7 +80,7 @@ OPTIMIZER_CONFIG: dict[str, any] = {
     "name": "AdamW",
     "params": {
         "lr": LEARNING_RATE,
-        "weight_decay": 1e-3,  # Strong L2 regularization
+        "weight_decay": 1e-1,  # Strong L2 regularization
         "eps": 1e-7  # More stable epsilon for AdamW
     }
 }
