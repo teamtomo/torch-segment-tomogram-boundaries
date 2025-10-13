@@ -32,7 +32,7 @@ def get_latest_checkpoint(
         `config.CKPT_SAVE_PATH` when omitted.
     filename : str, optional
         Desired filename for the checkpoint. When omitted, the remote filename
-        (`fidder.ckpt`) is used. The file is copied into ``cache_dir`` with this
+        (`tomo_slab.ckpt`) is used. The file is copied into ``cache_dir`` with this
         name if it differs from the remote name.
     """
     target_dir = Path(cache_dir) if cache_dir else config.CKPT_SAVE_PATH
