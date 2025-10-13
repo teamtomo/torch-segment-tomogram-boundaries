@@ -66,7 +66,7 @@ if __name__ == "__main__":
     if "path/to/your" in str(model_checkpoint) or not model_checkpoint.exists():
         print(f"ERROR: Model checkpoint not found or placeholder path is not updated.")
         print("Please update the 'model_checkpoint' variable in this script with the correct path to your .ckpt file.")
-elif not input_tomogram.exists():
+    elif not input_tomogram.exists():
         print(f"ERROR: Input tomogram not found at '{input_tomogram}'")
         print(f"Please place a tomogram at that location or update the 'input_tomogram' variable.")
     else:

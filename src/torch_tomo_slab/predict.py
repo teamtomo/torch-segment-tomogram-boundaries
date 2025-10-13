@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 from torch_tomo_slab.models import create_unet
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from scipy.ndimage import binary_erosion
 from tqdm import tqdm
@@ -28,7 +27,7 @@ from torch_tomo_slab import config
 from torch_tomo_slab.losses import get_loss_function
 from torch_tomo_slab.pl_model import SegmentationModel
 
-from torch_tomo_slab.utils import threeD, twoD
+from torch_tomo_slab.utils import threeD
 from torch_tomo_slab.utils.twoD import robust_normalization
 
 # Configure logging for prediction pipeline
