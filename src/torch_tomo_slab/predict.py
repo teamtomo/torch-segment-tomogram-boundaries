@@ -607,6 +607,7 @@ def predict(
     input_tomogram: Union[str, Path, np.ndarray],
     model_checkpoint_path: Union[str, Path],
     output_path: Optional[Path] = None,
+    compile_model:bool = True,
     **predict_kwargs,
 ) -> np.ndarray:
     """
@@ -635,8 +636,7 @@ def predict(
         The final binary slab mask as a 3D numpy array.
     """
     # Initialize the predictor with the given model checkpoint
-    predictor = TomoSlabPredictor(model_checkpoint_path=model_checkpoint_path)
-
+    predictor =TomoSlabPredictor(model_checkpoint_path=model_checkpoint_path, compile_model=compile_model)
     # Run the prediction pipeline
     final_mask = predictor.predict(
         input_tomogram=input_tomogram,
