@@ -128,7 +128,7 @@ class TomoSlabPredictor:
 
         logging.info(f"Resizing prediction back to original shape {original_shape}...")
         prob_map_np = F.interpolate(
-            prob_map_tensor.unsqueeze(0).unsqueeze(0), size=original_shape, mode='trilinear', align_corners=False
+            prob_map_tensor.unsqueeze(0).unsqueeze(0), size=original_shape, mode='area'
         ).squeeze().cpu().numpy()
 
         gc.collect()
