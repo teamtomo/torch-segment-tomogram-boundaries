@@ -1,4 +1,4 @@
-# src/torch_tomo_slab/pl_model.py
+# src/torch_segment_tomogram_boundaries/pl_model.py
 import math
 
 import pytorch_lightning as pl
@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision
 
-from torch_tomo_slab import config
+from torch_segment_tomogram_boundaries import config
 
 
 class SegmentationModel(pl.LightningModule):

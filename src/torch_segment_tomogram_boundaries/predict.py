@@ -15,13 +15,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from torch_tomo_slab import config
-from torch_tomo_slab.losses import get_loss_function
-from torch_tomo_slab.models import create_unet
-from torch_tomo_slab.pl_model import SegmentationModel
-from torch_tomo_slab.utils import threeD
-from torch_tomo_slab.utils.common import get_device
-from torch_tomo_slab.utils.twoD import robust_normalization
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.losses import get_loss_function
+from torch_segment_tomogram_boundaries.models import create_unet
+from torch_segment_tomogram_boundaries.pl_model import SegmentationModel
+from torch_segment_tomogram_boundaries.utils import threeD
+from torch_segment_tomogram_boundaries.utils.common import get_device
+from torch_segment_tomogram_boundaries.utils.twoD import robust_normalization
 
 # Configure logging for prediction pipeline
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

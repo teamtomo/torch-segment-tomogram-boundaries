@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 import pytorch_lightning as pl
-from torch_tomo_slab.models import create_unet
+from torch_segment_tomogram_boundaries.models import create_unet
 import torch
 import torch.nn as nn
 # Note: keep callback imports grouped for clarity
@@ -20,11 +20,11 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from torch_tomo_slab import config, constants
-from torch_tomo_slab.data.dataloading import SegmentationDataModule
-from torch_tomo_slab.losses import get_loss_function
-from torch_tomo_slab.pl_model import SegmentationModel
-from torch_tomo_slab.utils.common import save_config_snapshot
+from torch_segment_tomogram_boundaries import config, constants
+from torch_segment_tomogram_boundaries.data.dataloading import SegmentationDataModule
+from torch_segment_tomogram_boundaries.losses import get_loss_function
+from torch_segment_tomogram_boundaries.pl_model import SegmentationModel
+from torch_segment_tomogram_boundaries.utils.common import save_config_snapshot
 
 
 class TomoSlabTrainer:

@@ -1,7 +1,7 @@
 # tests/test_losses.py
 import pytest
 import torch
-from torch_tomo_slab.losses import get_loss_function, CombinedLoss, WeightedBCELoss
+from torch_segment_tomogram_boundaries.losses import get_loss_function, CombinedLoss, WeightedBCELoss
 
 
 def test_get_single_loss():

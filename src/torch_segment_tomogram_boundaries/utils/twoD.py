@@ -7,7 +7,7 @@ the tomographic segmentation pipeline.
 import torch
 import torch.nn.functional as F
 
-from torch_tomo_slab import config, constants
+from torch_segment_tomogram_boundaries import config, constants
 
 
 def robust_normalization(data: torch.Tensor) -> torch.Tensor:

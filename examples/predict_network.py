@@ -21,8 +21,8 @@ from pathlib import Path
 import mrcfile
 import numpy as np
 
-from torch_tomo_slab import config
-from torch_tomo_slab.predict import predict_binary, predict_probabilities
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.predict import predict_binary, predict_probabilities
 
 
 def run_prediction(

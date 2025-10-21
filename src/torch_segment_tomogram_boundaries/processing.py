@@ -14,10 +14,10 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from torch_tomo_slab import config, constants
-from torch_tomo_slab.utils.threeD import resize_and_pad_3d
-from torch_tomo_slab.utils.twoD import robust_normalization
-from torch_tomo_slab.utils.common import get_device
+from torch_segment_tomogram_boundaries import config, constants
+from torch_segment_tomogram_boundaries.utils.threeD import resize_and_pad_3d
+from torch_segment_tomogram_boundaries.utils.twoD import robust_normalization
+from torch_segment_tomogram_boundaries.utils.common import get_device
 
 log = logging.getLogger(__name__)
 

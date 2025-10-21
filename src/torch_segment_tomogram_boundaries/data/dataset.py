@@ -1,4 +1,4 @@
-# src/torch_tomo_slab/data/dataset.py
+# src/torch_segment_tomogram_boundaries/data/dataset.py
 
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -9,8 +9,8 @@ from albumentations.pytorch import ToTensorV2
 from scipy.ndimage import gaussian_filter
 from torch.utils.data import Dataset
 
-from torch_tomo_slab import config
-from torch_tomo_slab.data.weight_maps import generate_boundary_weight_map
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.data.weight_maps import generate_boundary_weight_map
 
 
 TransformType = Optional[Callable[[np.ndarray, np.ndarray], Dict[str, np.ndarray]]]

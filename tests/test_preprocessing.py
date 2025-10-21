@@ -3,8 +3,8 @@ import torch
 import os
 import numpy as np
 import mrcfile
-from torch_tomo_slab.processing import TrainingDataGenerator
-from torch_tomo_slab import constants
+from torch_segment_tomogram_boundaries.processing import TrainingDataGenerator
+from torch_segment_tomogram_boundaries import constants
 
 
 def test_generator_initialization(data_dirs):
@@ -30,7 +30,7 @@ def test_find_data_pairs(data_dirs, dummy_mrc_files):
     assert pairs[0][1].name == "dummy_tomo.mrc"
 
 
-from torch_tomo_slab.utils.threeD import resize_and_pad_3d
+from torch_segment_tomogram_boundaries.utils.threeD import resize_and_pad_3d
 
 
 def test_resize_and_pad():

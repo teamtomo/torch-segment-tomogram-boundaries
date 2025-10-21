@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pooch
 
-from torch_tomo_slab import config
+from torch_segment_tomogram_boundaries import config
 
 _DEFAULT_REMOTE_NAME = "tomo_slab.ckpt"
 _REGISTRY = {_DEFAULT_REMOTE_NAME: "d3bf10379a4ae804384d35aa427cfd124082bf17f9271267da725e766d69d2e9"}

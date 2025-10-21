@@ -5,7 +5,7 @@ author_email: p.shah.lab@gmail.com
 author_name: Pranav NM Shah
 github_username: shahpnmlab
 mode: tooling
-module_name: torch_tomo_slab
+module_name: torch_segment_tomogram_boundaries
 project_name: torch-tomo-slab
 project_short_description: A simple Unet application to detect boundaries of tomographic
     volumes

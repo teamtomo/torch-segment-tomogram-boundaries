@@ -47,13 +47,13 @@ First, you need to convert your 3D tomogram volumes and corresponding label mask
 Then, run the `TrainingDataGenerator`.
 
 ```python
-from torch_tomo_slab.processing import TrainingDataGenerator
-from torch_tomo_slab import constants
+from torch_segment_tomogram_boundaries.processing import TrainingDataGenerator
+from torch_segment_tomogram_boundaries import config
 
-# This class reads its path configuration from the `constants.py` file.
+# This class reads its path configuration from the `config.py` file.
 # Ensure the paths in that file are correct for your system.
-print(f"Reading tomograms from: {constants.REFERENCE_TOMOGRAM_DIR}")
-print(f"Reading masks from: {constants.MASK_OUTPUT_DIR}")
+print(f"Reading tomograms from: {config.TOMOGRAM_DIR}")
+print(f"Reading masks from: {config.MASKS_DIR}")
 
 # Initialize the generator
 generator = TrainingDataGenerator()
@@ -71,17 +71,21 @@ print("Data preparation complete.")
 Once the data is prepared, you can train the model using the `TomoSlabTrainer`.
 
 ```python
-from torch_tomo_slab.trainer import TomoSlabTrainer
+from torch_segment_tomogram_boundaries.trainer import train
+from torch_segment_tomogram_boundaries import config
 
 # The trainer automatically loads its configuration from `config.py`.
 # You can modify that file directly or override the settings (see note below).
 
-# 1. Initialize the trainer
-trainer = TomoSlabTrainer()
-
-# 2. Start the training process
-# The trainer will handle dataloading, model setup, and the training loop.
-trainer.fit()
+# Start the training process
+# The function will handle dataloading, model setup, and the training loop.
+train(
+    train_data_dir=config.TRAIN_DATA_DIR,
+    val_data_dir=config.VAL_DATA_DIR,
+    # Optional: override other settings
+    # learning_rate=1e-4,
+    # max_epochs=100,
+)
 
 print("Training finished.")
 ```
@@ -92,10 +96,14 @@ After training, use the best model checkpoint to predict a slab mask for a new, 
 
 ```python
 from pathlib import Path
-from torch_tomo_slab.predict import TomoSlabPredictor
+import mrcfile
+from torch_segment_tomogram_boundaries.predict import predict_binary
+from torch_segment_tomogram_boundaries.fetch import get_latest_checkpoint
 
-# 1. Specify the path to your trained model checkpoint
-checkpoint_path = "lightning_logs/Unet-resnet18/loss-weighted_bce/checkpoints/best-epoch=25-val_dice=0.98.ckpt"
+# 1. Specify the path to your trained model checkpoint.
+# You can use a local checkpoint or fetch the latest pretrained one.
+# checkpoint_path = "path/to/your/local/model.ckpt"
+checkpoint_path = get_latest_checkpoint()
 
 # 2. Specify the path to the input tomogram you want to predict
 input_tomo_path = Path("/path/to/your/new_tomogram.mrc")
@@ -103,17 +111,18 @@ input_tomo_path = Path("/path/to/your/new_tomogram.mrc")
 # 3. Define where to save the output mask
 output_mask_path = Path("/path/to/your/output/predicted_mask.mrc")
 
-# 4. Initialize the predictor with the trained model
-predictor = TomoSlabPredictor(model_checkpoint_path=checkpoint_path)
-
-# 5. Run the full prediction pipeline
-# This loads the tomogram, runs inference, fits planes, and saves the final mask.
-final_mask = predictor.predict(
+# 4. Run prediction to get a binary mask
+# This loads the tomogram, runs inference, and returns a binary mask.
+binary_mask = predict_binary(
     input_tomogram=input_tomo_path,
-    output_path=output_mask_path,
+    model_checkpoint_path=checkpoint_path,
     binarize_threshold=0.5,
-    downsample_grid_size=8
+    # Other optional args: slab_size, batch_size, smoothing_sigma
 )
+
+# 5. Save the final mask
+with mrcfile.new(output_mask_path, overwrite=True) as mrc:
+    mrc.set_data(binary_mask)
 
 print(f"Prediction complete. Mask saved to {output_mask_path}")
 
@@ -121,47 +130,51 @@ print(f"Prediction complete. Mask saved to {output_mask_path}")
 
 ### A Note on Overriding Default Configurations
 
-The default hyperparameters (e.g., learning rate, batch size, model architecture) are stored in `src/torch_tomo_slab/config.py`, and file paths are in `src/torch_tomo_slab/constants.py`.
+The default hyperparameters (e.g., learning rate, batch size, model architecture) and file paths are stored in `src/torch_segment_tomogram_boundaries/config.py` and `src/torch_segment_tomogram_boundaries/constants.py`.
 
 For quick experiments or when using this library as part of a larger application, it is best to **programmatically override** these settings in your script *before* you create instances of the library's classes.
 
 Here is an example of a wrapper function that demonstrates this best practice:
 
 ```python
-from torch_tomo_slab import config, constants
-from torch_tomo_slab.trainer import TomoSlabTrainer
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.trainer import train
 from pathlib import Path
 
-def run_custom_experiment(lr, batch_size, encoder, data_dir):
+
+def def run_custom_experiment(lr, batch_size, data_dir):
     """
     A wrapper to run training with custom, non-default hyperparameters.
     """
     print("--- Applying custom configuration ---")
 
-    # Overwrite config values before initializing the trainer
-    config.LEARNING_RATE = lr
+    # Overwrite config values before calling the train function
+    # This is for parameters not exposed in the `train` function signature.
     config.BATCH_SIZE = batch_size
-    config.MODEL_CONFIG['encoder_name'] = encoder
-    
-    # Overwrite constants (e.g., data paths)
+    # For example, to change the model:
+    # config.MODEL_CONFIG['channels'] = (64, 128, 256, 512)
+
+    # Determine data paths
     prepared_data_path = Path(data_dir)
-    constants.TRAIN_DATA_DIR = prepared_data_path / "train"
-    constants.VAL_DATA_DIR = prepared_data_path / "val"
+    train_path = prepared_data_path / "train"
+    val_path = prepared_data_path / "val"
 
-    print(f"Set learning rate -> {config.LEARNING_RATE}")
-    print(f"Set model encoder -> {config.MODEL_CONFIG['encoder_name']}")
-    print(f"Set training data path -> {constants.TRAIN_DATA_DIR}")
+    print(f"Set learning rate -> {lr}")
+    print(f"Set batch size -> {config.BATCH_SIZE}")
+    print(f"Set training data path -> {train_path}")
 
-    # Now, initialize and run the trainer
-    # It will use the new values you just set.
-    trainer = TomoSlabTrainer()
-    trainer.fit()
+    # Call the train function with arguments for exposed parameters.
+    # The function will use the modified `config` for other settings.
+    train(
+        learning_rate=lr,
+        train_data_dir=train_path,
+        val_data_dir=val_path,
+    )
 
 # Example usage:
 # run_custom_experiment(
 #     lr=1e-5,
 #     batch_size=16,
-#     encoder='resnet50',
 #     data_dir='/path/to/another/dataset'
 # )
 ```

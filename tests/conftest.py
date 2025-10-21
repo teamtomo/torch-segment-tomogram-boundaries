@@ -7,8 +7,8 @@ import pytorch_lightning as pl
 from pathlib import Path
 import warnings
 
-from torch_tomo_slab.trainer import TomoSlabTrainer
-from torch_tomo_slab import constants
+from torch_segment_tomogram_boundaries.trainer import TomoSlabTrainer
+from torch_segment_tomogram_boundaries import constants
 
 
 @pytest.fixture(scope="session")

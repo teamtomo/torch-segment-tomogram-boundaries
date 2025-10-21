@@ -14,9 +14,9 @@ Make sure your data paths are correctly set in the config.py file before running
 """
 from pathlib import Path
 
-from torch_tomo_slab import config
-from torch_tomo_slab.processing import TrainingDataGenerator
-from torch_tomo_slab.trainer import train
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.processing import TrainingDataGenerator
+from torch_segment_tomogram_boundaries.trainer import train
 
 
 def train_and_prep(

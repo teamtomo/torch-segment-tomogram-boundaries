@@ -1,9 +1,11 @@
 # tests/test_prediction.py
 import numpy as np
 import torch
-from torch_tomo_slab.predict import TomoSlabPredictor, fit_best_plane
+import mrcfile
+from torch_segment_tomogram_boundaries.predict import TomoSlabPredictor
 import pytest
 import warnings
+
 
 def test_predictor_initialization(trained_checkpoint):
     """Test loading the model from a real checkpoint file."""
@@ -25,11 +27,11 @@ def test_predict_from_numpy_array(trained_checkpoint):
         input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
 
         # Use a small slab size for speed
-        result_mask = predictor.predict(input_tomo, slab_size=3)
+        result_mask = predictor.predict_binary(input_tomo, slab_size=3)
 
         assert isinstance(result_mask, np.ndarray)
         assert result_mask.shape == input_tomo.shape
-        assert result_mask.dtype == np.int8
+        assert result_mask.dtype == np.uint8
         # The mask should be binary
         assert np.all(np.isin(result_mask, [0, 1]))
 
@@ -40,35 +42,84 @@ def test_predict_from_file(trained_checkpoint, dummy_mrc_files, tmp_path):
         warnings.simplefilter("ignore", UserWarning)
         predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
         output_path = tmp_path / "output_mask.mrc"
+        input_path = dummy_mrc_files["vol_path"]
 
-        predictor.predict(
-            input_tomogram=dummy_mrc_files["vol_path"],
-            output_path=output_path,
+        with mrcfile.open(input_path, permissive=True) as mrc:
+            input_shape = mrc.data.shape
+
+        mask = predictor.predict_binary(
+            input_tomogram=input_path,
             slab_size=3
         )
+        with mrcfile.new(output_path, overwrite=True) as mrc:
+            mrc.set_data(mask)
 
         assert output_path.exists()
+        with mrcfile.open(output_path) as mrc:
+            assert mrc.data.shape == input_shape
+            assert mrc.data.dtype == np.uint8
+            assert np.all(np.isin(mrc.data, [0, 1]))
 
-def test_fit_best_plane_logic():
-    """Unit test for the plane fitting algorithm."""
-    # Create points that lie perfectly on the plane z = 0.1x + 0.2y + 5
-    rng = np.random.default_rng(42)
-    x = rng.uniform(-10, 10, size=100)
-    y = rng.uniform(-10, 10, size=100)
-    z = 0.1 * x + 0.2 * y + 5
-    points = np.stack([x, y, z], axis=1)
 
-    # Add some noise
-    points += rng.normal(0, 0.01, size=points.shape)
+def test_predict_probabilities_output(trained_checkpoint):
+    """Test the output of the predict_probabilities method."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
 
-    plane = fit_best_plane(points)
-    coeffs = plane['coefficients']
+        prob_map = predictor.predict_probabilities(input_tomo, slab_size=3)
 
-    # Check if the fitted coefficients are close to the true ones
-    assert np.isclose(coeffs[0], 0.1, atol=1e-2)
-    assert np.isclose(coeffs[1], 0.2, atol=1e-2)
-    assert np.isclose(coeffs[2], 5.0, atol=1e-1)
+        assert isinstance(prob_map, np.ndarray)
+        assert prob_map.shape == input_tomo.shape
+        assert prob_map.dtype == np.float32
+        assert prob_map.min() >= 0.0
+        assert prob_map.max() <= 1.0
 
-    # Test failure on insufficient points
-    with pytest.raises(ValueError, match="Not enough points"):
-        fit_best_plane(points[:10])
+
+def test_predict_with_no_slab_blending(trained_checkpoint):
+    """Test prediction with slab_size=1 (no blending)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
+
+        # slab_size=1 disables blending
+        result_mask = predictor.predict_binary(input_tomo, slab_size=1)
+
+        assert result_mask.shape == input_tomo.shape
+        assert np.all(np.isin(result_mask, [0, 1]))
+
+
+def test_predict_with_smoothing(trained_checkpoint):
+    """Test prediction with Gaussian smoothing enabled."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(model_checkpoint_path=str(trained_checkpoint))
+        input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
+
+        # Use a non-zero sigma to enable smoothing
+        prob_map = predictor.predict_probabilities(input_tomo, slab_size=3, smoothing_sigma=1.5)
+
+        assert prob_map.shape == input_tomo.shape
+        assert prob_map.dtype == np.float32
+        # A simple check: a smoothed output should not be identical to a non-smoothed one
+        prob_map_no_smooth = predictor.predict_probabilities(input_tomo, slab_size=3, smoothing_sigma=None)
+        assert not np.allclose(prob_map, prob_map_no_smooth, atol=1e-5)
+
+
+def test_predict_with_compile_disabled(trained_checkpoint):
+    """Test that prediction works with torch.compile disabled."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        # Initialize predictor with compile_model=False
+        predictor = TomoSlabPredictor(
+            model_checkpoint_path=str(trained_checkpoint),
+            compile_model=False
+        )
+        input_tomo = np.random.rand(32, 64, 64).astype(np.float32)
+
+        result_mask = predictor.predict_binary(input_tomo, slab_size=3)
+
+        assert result_mask.shape == input_tomo.shape
+        assert np.all(np.isin(result_mask, [0, 1]))

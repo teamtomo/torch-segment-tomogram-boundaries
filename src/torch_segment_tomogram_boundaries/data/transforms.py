@@ -8,8 +8,8 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter, rotate as nd_rotate, zoom
 
-from torch_tomo_slab import constants
-from torch_tomo_slab.data.easymode_fourier import (
+from torch_segment_tomogram_boundaries import constants
+from torch_segment_tomogram_boundaries.data.easymode_fourier import (
     MissingWedgeMaskAndFourierAmplitudeMatching2D,
 )
 

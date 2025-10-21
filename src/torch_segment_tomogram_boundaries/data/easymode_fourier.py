@@ -113,6 +113,11 @@ class MissingWedgeParams:
     orientation: float
 
 
+def _default_scale_func(shape: Tuple[int, int], axis: int) -> float:
+    """Default scaling function for Fourier augmentation."""
+    return float(np.exp(np.random.uniform(np.log(shape[axis] / 8.0), np.log(shape[axis]))))
+
+
 class MissingWedgeMaskAndFourierAmplitudeMatching2D:
     """Combined Fourier augmentation inspired by Easymode's Membrain pipeline."""
 
@@ -139,9 +144,7 @@ class MissingWedgeMaskAndFourierAmplitudeMatching2D:
         self.missing_wedge_prob = missing_wedge_prob
         self.amplitude_prob = amplitude_prob
         self.sample_kernel_prob = sample_kernel_prob
-        self.scale = scale or (lambda shape, axis: np.exp(
-            np.random.uniform(np.log(shape[axis] / 8.0), np.log(shape[axis]))
-        ))
+        self.scale = scale or _default_scale_func
         self.loc = loc
 
     def _draw_params(self) -> MissingWedgeParams:

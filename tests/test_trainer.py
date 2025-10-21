@@ -1,8 +1,8 @@
 # tests/test_trainer.py
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 
-from torch_tomo_slab import config
-from torch_tomo_slab.trainer import TomoSlabTrainer
+from torch_segment_tomogram_boundaries import config
+from torch_segment_tomogram_boundaries.trainer import TomoSlabTrainer
 
 
 def test_trainer_initialization():

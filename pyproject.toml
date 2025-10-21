@@ -114,7 +114,7 @@ filterwarnings = ["error", "ignore::lightning_fabric.utilities.warnings.Possible
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
 [tool.mypy]
-files = "src/torch_tomo_slab"
+files = "src/torch_segment_tomogram_boundaries"
 strict = true
 disallow_any_generics = false
 disallow_subclassing_any = false

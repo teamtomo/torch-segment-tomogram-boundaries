@@ -1,4 +1,4 @@
-# src/torch_tomo_slab/data/dataloading.py
+# src/torch_segment_tomogram_boundaries/data/dataloading.py
 import re
 import random
 from collections import defaultdict
@@ -8,8 +8,8 @@ from typing import List, Optional, Iterator
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, Sampler
 
-from torch_tomo_slab.data.dataset import PTFileDataset
-from torch_tomo_slab.data.transforms import get_transforms
+from torch_segment_tomogram_boundaries.data.dataset import PTFileDataset
+from torch_segment_tomogram_boundaries.data.transforms import get_transforms
 
 
 class StratifiedSampler(Sampler[int]):
