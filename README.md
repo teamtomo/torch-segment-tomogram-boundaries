@@ -1,4 +1,4 @@
-# torch-tomo-slab
+# torch-segment-tomogram-boundaries
 
 [![License](https://img.shields.io/pypi/l/torch-tomo-slab.svg?color=green)](https://github.com/shahpnmlab/torch-tomo-slab/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/torch-tomo-slab.svg?color=green)](https://pypi.org/project/torch-tomo-slab)
