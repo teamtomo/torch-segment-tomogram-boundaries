@@ -14,9 +14,9 @@ The easiest way to get started is to use the [github cli](https://cli.github.com
 and [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
-gh repo fork shahpnmlab/torch-tomo-slab --clone
+gh repo fork teamtomo/torch-segment-tomogram-boundaries --clone
 # or just
-# gh repo clone shahpnmlab/torch-tomo-slab
+# gh repo clone teamtomo/torch-segment-tomogram-boundaries
 cd torch-tomo-slab
 uv sync
 ```
