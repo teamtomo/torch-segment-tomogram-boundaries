@@ -8,7 +8,25 @@ from pathlib import Path
 import warnings
 
 from torch_segment_tomogram_boundaries.trainer import TomoSlabTrainer
-from torch_segment_tomogram_boundaries import constants
+from torch_segment_tomogram_boundaries import config, constants
+
+
+@pytest.fixture(scope="session", autouse=True)
+def tiny_model_settings():
+    """Shrink the model and target volume so CPU-only CI stays fast.
+
+    The trainer and predictor read these at call time, so patching them for the whole
+    session keeps checkpoint creation and loading consistent.
+    """
+    saved = (config.MODEL_CONFIG, constants.TARGET_VOLUME_SHAPE)
+    config.MODEL_CONFIG = {
+        **config.MODEL_CONFIG,
+        "channels": (4, 8, 16, 32),
+        "num_res_units": 1,
+    }
+    constants.TARGET_VOLUME_SHAPE = (16, 64, 64)
+    yield
+    config.MODEL_CONFIG, constants.TARGET_VOLUME_SHAPE = saved
 
 
 @pytest.fixture(scope="session")

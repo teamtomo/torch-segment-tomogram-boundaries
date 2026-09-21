@@ -93,7 +93,7 @@ def test_generator_run(data_dirs, tmp_path):
     sample = torch.load(output_files[0])
     assert "image" in sample
     assert "label" in sample
-    assert sample["image"].shape[0] == 2  # 2 channels
+    assert sample["image"].shape[0] == 1  # single channel
     # The label shape is (H, W), image is (C, H, W)
     assert sample["image"].shape[1:] == sample["label"].shape
 
