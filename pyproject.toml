@@ -50,7 +50,13 @@ dependencies = [
     "albumentations",
     "tensorboard",
     "pooch",
+    "scipy",
+    "tqdm",
+    "typer>=0.12",
 ]
+
+[project.scripts]
+tomo-slab = "torch_segment_tomogram_boundaries.cli:app"
 
 [project.urls]
 homepage = "https://github.com/shahpnmlab/torch-tomo-slab"
