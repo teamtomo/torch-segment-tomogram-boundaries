@@ -35,30 +35,8 @@ uv run pre-commit run --all-files
 
 ## Command-line usage
 
-Installing the package provides a `tomo-slab` command (`tomo-slab --help` for everything):
-
-```sh
-# 1. Convert tomograms + masks (matching filenames) into 2D training slices
-tomo-slab prepare volumes/ masks/ -o prepared_data/
-
-# 2. Train (expects prepared_data/train and prepared_data/val)
-tomo-slab train prepared_data/ -o checkpoints/ --epochs 50 --batch-size 8
-
-# 3. Predict masks (uses the pretrained model if --checkpoint is omitted)
-tomo-slab predict tomo1.mrc tomo2.mrc -o results/ --threshold 0.5 --save-probabilities
-
-# 4. Optionally refine a mask by fitting planes to the top/bottom surfaces
-tomo-slab fit-planes results/tomo1_mask.mrc results/tomo1_fitted.mrc
-
-# Measure slab thickness of existing masks (screen, and optionally a CSV)
-tomo-slab thickness results/*_mask.mrc -o thickness.csv
-# `predict` can measure thickness too (--thickness, or --thickness-file to save a CSV). It fits the
-# top/bottom planes once and reuses them; --fit-planes also writes the fitted mask
-tomo-slab predict tomo1.mrc --fit-planes --thickness-file thickness.csv
-
-# Download the pretrained checkpoint and print its path
-tomo-slab fetch
-```
+This package is a library and ships no command-line interface. A separate tool,
+`tomo-slab`, wraps it and adds multi-GPU job distribution.
 
 ## API Usage
 
