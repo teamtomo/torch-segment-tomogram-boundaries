@@ -78,11 +78,13 @@ def _report_thickness(rows: list[dict], output: Optional[Path]) -> None:
 @app.command()
 def prepare(
     volume_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Directory of tomograms (*.mrc)."
+        ..., exists=True, file_okay=False, metavar="VOLUME_DIR",
+        help="Directory containing the input tomograms (*.mrc).",
     ),
     mask_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False,
-        help="Directory of boundary masks (*.mrc); names must match the tomograms.",
+        ..., exists=True, file_okay=False, metavar="MASK_DIR",
+        help="Directory containing the ground-truth boundary masks (*.mrc). "
+        "File names must match those in VOLUME_DIR.",
     ),
     output_dir: Path = typer.Option(
         Path("prepared_data"), "--output-dir", "-o",
@@ -110,8 +112,9 @@ def prepare(
 @app.command()
 def train(
     data_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False,
-        help="Prepared data root containing train/ and val/ (see `prepare`).",
+        ..., exists=True, file_okay=False, metavar="DATA_DIR",
+        help="Prepared data root containing train/ and val/ subdirectories "
+        "(the --output-dir of `tomo-slab prepare`).",
     ),
     ckpt_dir: Optional[Path] = typer.Option(
         None, "--ckpt-dir", "-o", help="Where to save checkpoints and logs."
@@ -154,7 +157,8 @@ def train(
 @app.command()
 def predict(
     tomograms: list[Path] = typer.Argument(
-        ..., exists=True, dir_okay=False, help="One or more input tomograms (.mrc)."
+        ..., exists=True, dir_okay=False, metavar="TOMOGRAMS...",
+        help="One or more tomograms (.mrc) to segment.",
     ),
     checkpoint: Optional[Path] = typer.Option(
         None, "--checkpoint", "-c", exists=True, dir_okay=False,
@@ -179,15 +183,18 @@ def predict(
     fit_planes_mask: bool = typer.Option(
         False, "--fit-planes", help="Also write the plane-fitted mask (<stem>_fitted_mask.mrc)."
     ),
+    measure_thickness_flag: bool = typer.Option(
+        False, "--thickness", help="Measure and print slab thickness (implied by --thickness-file)."
+    ),
     downsample_grid_size: int = typer.Option(
         8, "--downsample-grid-size", min=1, help="Surface-point downsampling grid for plane fitting."
     ),
     thickness_file: Optional[Path] = typer.Option(
         None, "--thickness-file", dir_okay=False,
-        help="Write measured slab thickness for all tomograms to this CSV file.",
+        help="Write measured slab thickness for all tomograms to this CSV file (implies --thickness).",
     ),
 ) -> None:
-    """Predict slab masks for one or more tomograms and report slab thickness."""
+    """Predict slab masks for one or more tomograms, optionally fitting planes and measuring thickness."""
     import mrcfile
     import numpy as np
 
@@ -203,6 +210,7 @@ def predict(
 
         checkpoint = get_latest_checkpoint()
 
+    do_thickness = measure_thickness_flag or thickness_file is not None
     output_dir.mkdir(parents=True, exist_ok=True)
     predictor = TomoSlabPredictor(checkpoint, compile_model=compile_model)
     thickness_rows: list[dict] = []
@@ -231,13 +239,15 @@ def predict(
 
         # Fit the top/bottom planes once; reuse them for the fitted mask and thickness.
         planes = None
-        try:
-            planes = fit_slab_planes(binary.astype(np.uint8), downsample_grid_size)
-        except ValueError as e:
-            typer.secho(f"{tomo.name}: plane fitting failed ({e})", fg=typer.colors.YELLOW, err=True)
-        thickness_rows.append(
-            {"name": tomo.name, **measure_thickness(binary, float(voxel_size.x), planes=planes)}
-        )
+        if fit_planes_mask or do_thickness:
+            try:
+                planes = fit_slab_planes(binary.astype(np.uint8), downsample_grid_size)
+            except ValueError as e:
+                typer.secho(f"{tomo.name}: plane fitting failed ({e})", fg=typer.colors.YELLOW, err=True)
+        if do_thickness:
+            thickness_rows.append(
+                {"name": tomo.name, **measure_thickness(binary, float(voxel_size.x), planes=planes)}
+            )
         if fit_planes_mask and planes is not None:
             fitted = generate_mask_from_planes(planes, binary.shape)
             mrcfile.write(fitted_path, fitted.astype(np.float32), voxel_size=voxel_size, overwrite=True)
@@ -245,13 +255,20 @@ def predict(
             mrcfile.write(prob_path, probs.astype(np.float32), voxel_size=voxel_size, overwrite=True)
         typer.secho(f"{tomo.name} -> {mask_path}", fg=typer.colors.GREEN)
 
-    _report_thickness(thickness_rows, thickness_file)
+    if do_thickness:
+        _report_thickness(thickness_rows, thickness_file)
 
 
 @app.command("fit-planes")
 def fit_planes(
-    input_mask: Path = typer.Argument(..., exists=True, dir_okay=False, help="Binary mask (.mrc)."),
-    output_mask: Path = typer.Argument(..., dir_okay=False, help="Where to write the fitted mask."),
+    input_mask: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, metavar="INPUT_MASK",
+        help="Existing binary mask (.mrc) to refine.",
+    ),
+    output_mask: Path = typer.Argument(
+        ..., dir_okay=False, metavar="OUTPUT_MASK",
+        help="Path of the fitted mask (.mrc) to write.",
+    ),
     downsample_grid_size: int = typer.Option(
         8, "--downsample-grid-size", "-g", min=1,
         help="Voxel grid size for downsampling surface points before fitting.",
@@ -281,7 +298,8 @@ def fit_planes(
 @app.command()
 def thickness(
     masks: list[Path] = typer.Argument(
-        ..., exists=True, dir_okay=False, help="One or more binary masks (.mrc)."
+        ..., exists=True, dir_okay=False, metavar="MASKS...",
+        help="One or more existing binary masks (.mrc) to measure.",
     ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", dir_okay=False, help="Also write results to this CSV file."
