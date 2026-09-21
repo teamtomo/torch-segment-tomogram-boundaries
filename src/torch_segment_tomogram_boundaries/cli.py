@@ -183,15 +183,12 @@ def predict(
     fit_planes_mask: bool = typer.Option(
         False, "--fit-planes", help="Also write the plane-fitted mask (<stem>_fitted_mask.mrc)."
     ),
-    measure_thickness_flag: bool = typer.Option(
-        False, "--thickness", help="Measure and print slab thickness (implied by --thickness-file)."
-    ),
     downsample_grid_size: int = typer.Option(
         8, "--downsample-grid-size", min=1, help="Surface-point downsampling grid for plane fitting."
     ),
     thickness_file: Optional[Path] = typer.Option(
         None, "--thickness-file", dir_okay=False,
-        help="Write measured slab thickness for all tomograms to this CSV file (implies --thickness).",
+        help="Measure slab thickness and write it for all tomograms to this CSV file (also printed).",
     ),
 ) -> None:
     """Predict slab masks for one or more tomograms, optionally fitting planes and measuring thickness."""
@@ -210,7 +207,7 @@ def predict(
 
         checkpoint = get_latest_checkpoint()
 
-    do_thickness = measure_thickness_flag or thickness_file is not None
+    do_thickness = thickness_file is not None
     output_dir.mkdir(parents=True, exist_ok=True)
     predictor = TomoSlabPredictor(checkpoint, compile_model=compile_model)
     thickness_rows: list[dict] = []
