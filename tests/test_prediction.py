@@ -123,3 +123,14 @@ def test_predict_with_compile_disabled(trained_checkpoint):
 
         assert result_mask.shape == input_tomo.shape
         assert np.all(np.isin(result_mask, [0, 1]))
+
+def test_predictor_explicit_device(trained_checkpoint):
+    """An explicit device is honoured and the default falls back to CUDA/CPU."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        predictor = TomoSlabPredictor(str(trained_checkpoint), compile_model=False, device="cpu")
+        assert predictor.device == torch.device("cpu")
+        assert next(predictor.model.parameters()).device.type == "cpu"
+
+        default = TomoSlabPredictor(str(trained_checkpoint), compile_model=False)
+        assert default.device.type == ("cuda" if torch.cuda.is_available() else "cpu")

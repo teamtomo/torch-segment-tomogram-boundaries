@@ -42,7 +42,12 @@ class TomoSlabPredictor:
     4. Probability map averaging and optional smoothing.
     """
 
-    def __init__(self, model_checkpoint_path: Union[str, Path], compile_model: bool = True):
+    def __init__(
+        self,
+        model_checkpoint_path: Union[str, Path],
+        compile_model: bool = True,
+        device: Optional[Union[str, torch.device]] = None,
+    ):
         """
         Initialize the predictor with a trained model checkpoint.
 
@@ -50,8 +55,10 @@ class TomoSlabPredictor:
             model_checkpoint_path: Path to the trained .ckpt file.
             compile_model: If True, compiles the model with `torch.compile` for
                            faster inference (requires PyTorch 2.0+).
+            device: Device to run on, e.g. ``"cuda:1"`` or ``torch.device("cpu")``.
+                    If None, CUDA is used when available, otherwise the CPU.
         """
-        self.device = get_device()
+        self.device = get_device() if device is None else torch.device(device)
         self.model, self.target_shape_3d = self._load_model(model_checkpoint_path, compile_model)
 
     def _load_model(self, model_checkpoint_path: Union[str, Path], compile_model: bool) -> Tuple[nn.Module, Tuple[int, int, int]]:
@@ -132,8 +139,10 @@ class TomoSlabPredictor:
         ).squeeze().cpu().numpy()
 
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if self.device.type == "cuda":
+            # Release cached memory on *this* predictor's GPU (not the current device).
+            with torch.cuda.device(self.device):
+                torch.cuda.empty_cache()
         
         logging.info("Probability map prediction complete.")
         return prob_map_np
@@ -235,15 +244,17 @@ def predict_probabilities(
         model_checkpoint_path: Path to the trained .ckpt file.
         **kwargs: Additional keyword arguments passed to the predictor's
                   `predict_probabilities` method, e.g., `slab_size`, `batch_size`,
-                  `smoothing_sigma`, `compile_model`.
+                  `smoothing_sigma`, `compile_model`, `device`.
 
     Returns:
         The predicted 3D probability map as a numpy array.
     """
     compile_model = kwargs.pop("compile_model", True)
+    device = kwargs.pop("device", None)
     predictor = TomoSlabPredictor(
         model_checkpoint_path=model_checkpoint_path,
-        compile_model=compile_model
+        compile_model=compile_model,
+        device=device,
     )
     return predictor.predict_probabilities(input_tomogram=input_tomogram, **kwargs)
 
@@ -265,14 +276,16 @@ def predict_binary(
         model_checkpoint_path: Path to the trained .ckpt file.
         **kwargs: Additional keyword arguments passed to the predictor's
                   `predict_binary` method, e.g., `binarize_threshold`,
-                  `slab_size`, `batch_size`, `compile_model`.
+                  `slab_size`, `batch_size`, `compile_model`, `device`.
 
     Returns:
         The final binary slab mask as a 3D numpy array.
     """
     compile_model = kwargs.pop("compile_model", True)
+    device = kwargs.pop("device", None)
     predictor = TomoSlabPredictor(
         model_checkpoint_path=model_checkpoint_path,
-        compile_model=compile_model
+        compile_model=compile_model,
+        device=device,
     )
     return predictor.predict_binary(input_tomogram=input_tomogram, **kwargs)
