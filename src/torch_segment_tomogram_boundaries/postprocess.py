@@ -7,7 +7,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import binary_erosion
 from typing import Dict, List, Tuple
 
 log = logging.getLogger(__name__)
@@ -37,18 +36,75 @@ def downsample_points(points: np.ndarray, grid_size: int) -> np.ndarray:
     return df.groupby(['voxel_x', 'voxel_y', 'voxel_z'])[['x', 'y', 'z']].mean().to_numpy()
 
 
-def fit_best_plane(points: np.ndarray, angle_res: int = 180, dist_res: int = 200) -> Dict[str, List[float]]:
+def _resolve_device(device):
+    """Return a ``torch.device``; ``None`` selects CUDA if available, else CPU.
+
+    MPS is not auto-selected: its scatter/nonzero kernels were measured slower than
+    the CPU path for this workload. Pass ``device="mps"`` to force it.
     """
-    Fit the best plane to 3D points using a Hough Transform-like method.
+    import torch
+
+    if device is not None:
+        return torch.device(device)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _surface_coords_zyx(mask: np.ndarray, device) -> np.ndarray:
+    """(N, 3) ZYX coordinates of surface voxels (mask minus its 6-connected erosion).
+
+    Equivalent to ``argwhere(mask - scipy.ndimage.binary_erosion(mask))`` (voxels on
+    the volume border count as surface), but runs on ``device``.
+    """
+    import torch
+
+    m = torch.from_numpy(np.ascontiguousarray(mask > 0)).to(device)
+    padded = torch.zeros(tuple(n + 2 for n in m.shape), dtype=torch.bool, device=device)
+    padded[1:-1, 1:-1, 1:-1] = m
+    eroded = (
+        m
+        & padded[:-2, 1:-1, 1:-1] & padded[2:, 1:-1, 1:-1]
+        & padded[1:-1, :-2, 1:-1] & padded[1:-1, 2:, 1:-1]
+        & padded[1:-1, 1:-1, :-2] & padded[1:-1, 1:-1, 2:]
+    )
+    return torch.nonzero(m & ~eroded).cpu().numpy()
+
+
+def _lstsq_plane(points: np.ndarray) -> Tuple[float, float, float]:
+    """Least-squares z = ax + by + c through (N, 3) XYZ points."""
+    centre = points.mean(axis=0)
+    p = points - centre
+    design = np.column_stack([p[:, 0], p[:, 1], np.ones(len(p))])
+    a, b, c0 = np.linalg.lstsq(design, p[:, 2], rcond=None)[0]
+    return float(a), float(b), float(c0 + centre[2] - a * centre[0] - b * centre[1])
+
+
+def fit_best_plane(
+    points: np.ndarray,
+    angle_res: int = 60,
+    dist_res: int = 200,
+    device=None,
+    refine_iters: int = 5,
+) -> Dict[str, List[float]]:
+    """
+    Fit the best plane to 3D points: Hough voting, then least-squares refinement.
+
+    Every candidate normal (an ``angle_res`` x ``angle_res`` grid) votes with the
+    binned signed distances of all points; voting is batched and runs on ``device``.
+    The winning plane is then refined by least squares on its inliers, so the result
+    is not limited by the angular/distance resolution of the accumulator.
 
     Parameters
     ----------
     points : np.ndarray
         Input points as (N, 3) array with columns [x, y, z].
-    angle_res : int, default=180
+    angle_res : int, default=60
         Angular resolution for normal vector discretization.
     dist_res : int, default=200
         Distance resolution for plane distance discretization.
+    device : torch.device or str, optional
+        Device for the voting step. Defaults to CUDA when available, else CPU.
+    refine_iters : int, default=5
+        Maximum inlier re-fitting iterations (0 disables refinement).
 
     Returns
     -------
@@ -61,42 +117,67 @@ def fit_best_plane(points: np.ndarray, angle_res: int = 180, dist_res: int = 200
     ValueError
         If insufficient points (<50) or plane is nearly vertical to Z-axis.
     """
+    import torch
+
     if len(points) < 50:
         raise ValueError(f"Not enough points ({len(points)}) to fit a plane.")
 
+    device = _resolve_device(device)
+    pts64 = np.asarray(points, dtype=np.float64)
+    centre = pts64.mean(axis=0)
+    pc = pts64 - centre
+    # Centred float32 keeps precision and runs on every backend (MPS has no float64).
+    p = torch.from_numpy(pc.astype(np.float32)).to(device)
+
     # Discretize the space of possible plane normals (phi, theta in spherical coords)
-    phis = np.linspace(0, np.pi, angle_res)
-    thetas = np.linspace(0, np.pi, angle_res)
-    phi_grid, theta_grid = np.meshgrid(phis, thetas)
+    angles = torch.linspace(0, np.pi, angle_res, device=device)
+    phi, theta = torch.meshgrid(angles, angles, indexing="xy")
+    normals = torch.stack(
+        [
+            (torch.sin(phi) * torch.cos(theta)).ravel(),
+            (torch.sin(phi) * torch.sin(theta)).ravel(),
+            torch.cos(phi).ravel(),
+        ],
+        dim=1,
+    )
 
-    # Convert spherical to Cartesian coordinates for normals
-    nx, ny, nz = np.sin(phi_grid) * np.cos(theta_grid), np.sin(phi_grid) * np.sin(theta_grid), np.cos(phi_grid)
-    normals = np.stack([nx.ravel(), ny.ravel(), nz.ravel()], axis=1)
+    # Signed distances lie in [-r, r]; use one shared range so bins are comparable.
+    radius = float(p.norm(dim=1).max()) + 1e-6
+    bin_width = 2 * radius / dist_res
+    n_pts = p.shape[0]
+    chunk = max(1, (1 << 26) // n_pts)  # bound the (chunk x N) distance matrix to ~256 MB
 
-    # Project points onto each normal to get distances
-    dists = np.dot(points, normals.T)
-    min_dist, max_dist = dists.min(), dists.max()
+    best_votes, best_idx, best_bin = -1.0, 0, 0
+    for start in range(0, len(normals), chunk):
+        n_chunk = normals[start:start + chunk]
+        bins = ((p @ n_chunk.T + radius) / bin_width).long().clamp_(0, dist_res - 1)
+        votes = torch.zeros((len(n_chunk), dist_res), dtype=torch.float32, device=device)
+        votes.scatter_add_(1, bins.T.contiguous(), torch.ones_like(bins.T, dtype=torch.float32))
+        peak, flat = votes.view(-1).max(0)
+        if float(peak) > best_votes:
+            best_votes = float(peak)
+            best_idx, best_bin = start + int(flat) // dist_res, int(flat) % dist_res
 
-    # Create an accumulator array for voting
-    accumulator = np.zeros((len(normals), dist_res), dtype=np.uint32)
-    dist_bins = np.linspace(min_dist, max_dist, dist_res)
-
-    # Vote for the best (normal, distance) pair
-    for i in range(len(normals)):
-        hist, _ = np.histogram(dists[:, i], bins=dist_res, range=(min_dist, max_dist))
-        accumulator[i, :] = hist
-
-    # Find the peak in the accumulator
-    normal_idx, dist_idx = np.unravel_index(np.argmax(accumulator), accumulator.shape)
-    best_normal, best_dist = normals[normal_idx], dist_bins[dist_idx]
-
-    # Convert plane parameters to z = ax + by + c form
-    nx, ny, nz = best_normal
+    nx, ny, nz = (float(v) for v in normals[best_idx])
     if abs(nz) < 1e-6:
         raise ValueError("Detected a plane nearly vertical to the Z-axis. Plane fitting is unstable.")
+    offset = (best_bin + 0.5) * bin_width - radius  # in centred coordinates
 
     # Equation: nx*x + ny*y + nz*z = d  =>  z = (-nx/nz)*x + (-ny/nz)*y + (d/nz)
-    return {'coefficients': [-nx / nz, -ny / nz, best_dist / nz]}
+    a, b, c = -nx / nz, -ny / nz, offset / nz  # centred coordinates
+    for _ in range(refine_iters):
+        resid = np.abs(pc[:, 2] - (a * pc[:, 0] + b * pc[:, 1] + c))
+        inliers = resid / np.sqrt(a * a + b * b + 1) <= bin_width
+        if inliers.sum() < 3:
+            break
+        a_new, b_new, c_new = _lstsq_plane(pc[inliers])
+        converged = max(abs(a_new - a), abs(b_new - b)) < 1e-6 and abs(c_new - c) < 1e-4
+        a, b, c = a_new, b_new, c_new
+        if converged:
+            break
+
+    # Back from centred to original coordinates.
+    return {'coefficients': [a, b, c + centre[2] - a * centre[0] - b * centre[1]]}
 
 
 def generate_mask_from_planes(planes: Dict[str, Dict[str, List[float]]], volume_shape: Tuple[int, int, int]) -> np.ndarray:
@@ -134,7 +215,7 @@ def generate_mask_from_planes(planes: Dict[str, Dict[str, List[float]]], volume_
     return mask
 
 
-def fit_slab_planes(mask: np.ndarray, downsample_grid_size: int) -> Dict[str, Dict[str, List[float]]]:
+def fit_slab_planes(mask: np.ndarray, downsample_grid_size: int, device=None) -> Dict[str, Dict[str, List[float]]]:
     """
     Extract boundary points, fit planes, and generate a clean slab mask.
 
@@ -144,6 +225,9 @@ def fit_slab_planes(mask: np.ndarray, downsample_grid_size: int) -> Dict[str, Di
         Binary mask as a 3D array where non-zero values indicate boundaries.
     downsample_grid_size : int
         Grid size for point cloud downsampling before plane fitting.
+    device : torch.device or str, optional
+        Device for surface extraction and plane fitting. Defaults to CUDA when
+        available, else CPU.
 
     Returns
     -------
@@ -157,9 +241,8 @@ def fit_slab_planes(mask: np.ndarray, downsample_grid_size: int) -> Dict[str, Di
         If insufficient boundary points (<1000) are found.
     """
     log.info("Extracting boundary points from the binarized mask...")
-    # Erode the mask to find the surface voxels
-    surface = mask - binary_erosion(mask)
-    coords_zyx = np.argwhere(surface > 0)
+    device = _resolve_device(device)
+    coords_zyx = _surface_coords_zyx(mask, device)
 
     if len(coords_zyx) < 1000:
         raise ValueError(f"Not enough boundary points ({len(coords_zyx)}) found to reliably fit planes.")
@@ -187,18 +270,18 @@ def fit_slab_planes(mask: np.ndarray, downsample_grid_size: int) -> Dict[str, Di
 
     # Fit a plane to each point cloud
     log.info("Fitting top and bottom planes...")
-    plane_top = fit_best_plane(top_points_ds)
-    plane_bottom = fit_best_plane(bottom_points_ds)
+    plane_top = fit_best_plane(top_points_ds, device=device)
+    plane_bottom = fit_best_plane(bottom_points_ds, device=device)
 
     return {'top': plane_top, 'bottom': plane_bottom}
 
 
-def fit_and_generate_mask(mask: np.ndarray, downsample_grid_size: int) -> np.ndarray:
+def fit_and_generate_mask(mask: np.ndarray, downsample_grid_size: int, device=None) -> np.ndarray:
     """Fit top/bottom planes to a binary mask and return the clean slab mask.
 
     Raises ValueError if too few boundary points are found (see `fit_slab_planes`).
     """
-    planes = fit_slab_planes(mask, downsample_grid_size)
+    planes = fit_slab_planes(mask, downsample_grid_size, device)
     log.info("Generating final mask from fitted planes.")
     return generate_mask_from_planes(planes, mask.shape)
 
