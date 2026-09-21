@@ -6,8 +6,6 @@ points, and fit planes to generate a cleaned, geometrically consistent slab mask
 This is useful for turning a potentially noisy, voxel-based prediction into a
 smooth, planar representation of the slab.
 
-Equivalent CLI: tomo-slab fit-planes <input> <output>
-
 Usage:
     python plane_fitting.py <input_mask_path> <output_mask_path> [--downsample_grid_size G]
 
