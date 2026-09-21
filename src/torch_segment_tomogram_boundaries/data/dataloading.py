@@ -22,7 +22,7 @@ class StratifiedSampler(Sampler[int]):
     tomograms, improving model generalization.
     """
     def __init__(self, file_paths: List[Path], batch_size: int, seed: int = 42):
-        super().__init__(file_paths)
+        super().__init__()
         self.file_paths = file_paths
         self.batch_size = batch_size
         self.groups = self._group_by_volume()
