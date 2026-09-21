@@ -52,7 +52,7 @@ tomo-slab fit-planes results/tomo1_mask.mrc results/tomo1_fitted.mrc
 
 # Measure slab thickness of existing masks (screen, and optionally a CSV)
 tomo-slab thickness results/*_mask.mrc -o thickness.csv
-# `predict` can measure thickness too (--thickness, or --thickness-file to save a CSV). It fits the
+# `predict` can measure thickness too (--thickness-file saves a CSV). It fits the
 # top/bottom planes once and reuses them; --fit-planes also writes the fitted mask
 tomo-slab predict tomo1.mrc --fit-planes --thickness-file thickness.csv
 
