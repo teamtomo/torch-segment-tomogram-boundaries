@@ -5,6 +5,7 @@ models to generate boundary masks from tomographic volumes.
 """
 import gc
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -59,6 +60,7 @@ class TomoSlabPredictor:
                     If None, CUDA is used when available, otherwise the CPU.
         """
         self.device = get_device() if device is None else torch.device(device)
+        self._compiled = False
         self.model, self.target_shape_3d = self._load_model(model_checkpoint_path, compile_model)
 
     def _load_model(self, model_checkpoint_path: Union[str, Path], compile_model: bool) -> Tuple[nn.Module, Tuple[int, int, int]]:
@@ -66,7 +68,7 @@ class TomoSlabPredictor:
         logging.info(f"Loading model from checkpoint: {model_checkpoint_path}")
         base_model = create_unet(**config.MODEL_CONFIG)
         loss_fn = get_loss_function(config.LOSS_CONFIG)
-        
+
         model = SegmentationModel.load_from_checkpoint(
             model_checkpoint_path, map_location=self.device,
             model=base_model, loss_function=loss_fn
@@ -77,13 +79,14 @@ class TomoSlabPredictor:
             logging.info("Compiling model for faster inference...")
             try:
                 model = torch.compile(model, mode="reduce-overhead", fullgraph=False)
+                self._compiled = True
             except Exception as e:
                 logging.warning(f"Model compilation failed: {e}. Using uncompiled model.")
 
         target_shape = model.hparams.get('target_shape')
         if not target_shape:
             raise ValueError("`target_shape` not found in model checkpoint. Please retrain with an updated trainer.")
-        
+
         logging.info(f"Using target shape from checkpoint for resizing: {target_shape}")
         return model, target_shape
 
@@ -94,6 +97,7 @@ class TomoSlabPredictor:
         slab_size: int = 15,
         batch_size: int = 16,
         smoothing_sigma: Optional[float] = None,
+        parallel_axes: bool = False,
     ) -> np.ndarray:
         """
         Execute the prediction pipeline to generate a 3D probability map.
@@ -103,10 +107,35 @@ class TomoSlabPredictor:
             slab_size: Size of slab for temporal blending (must be odd). If 1, no blending.
             batch_size: Batch size for processing 2D slices during inference.
             smoothing_sigma: Standard deviation for 3D Gaussian smoothing. If None, no smoothing.
+            parallel_axes: If True, run the XZ and YZ passes concurrently (two threads,
+                each on its own CUDA stream when on a GPU) instead of one after the other.
+                The results are the same as with the default False. The volume is
+                uploaded once and the model is shared, so this is cheaper in VRAM than
+                a second worker process, but peak VRAM still rises by roughly one set of
+                per-batch activations plus the second axis' intermediate slabs, and each
+                stream keeps its own cache of free blocks in PyTorch's allocator, so
+                reserved memory grows more than allocated memory (setting
+                ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` may reduce this).
+                It only helps when a single pass leaves the GPU partly idle; the gain
+                measured so far is modest (~8% end to end), so it is opt-in. On CPU or
+                MPS it runs but is not faster. Not supported with ``compile_model=True``
+                (CUDA graphs are not thread-safe).
 
-        Returns:
+        Returns
+        -------
             The predicted 3D probability map as a numpy array.
+
+        Raises
+        ------
+            ValueError: If ``parallel_axes`` is True and the model was compiled.
         """
+        if parallel_axes and self._compiled:
+            raise ValueError(
+                "parallel_axes=True is not supported with a compiled model "
+                "(mode='reduce-overhead' uses CUDA graphs, which are not thread-safe). "
+                "Create the predictor with compile_model=False."
+            )
+
         if isinstance(input_tomogram, (str, Path)):
             with mrcfile.open(input_tomogram, permissive=True) as mrc:
                 original_data_np = mrc.data.astype(np.float32)
@@ -120,14 +149,12 @@ class TomoSlabPredictor:
             torch.from_numpy(original_data_np), target_shape=self.target_shape_3d, mode='image'
         ).to(self.device)
 
-        pred_xz = self._predict_single_axis_with_slab_blending(resized_volume, 'XZ', slab_size, batch_size)
-        pred_yz_permuted = self._predict_single_axis_with_slab_blending(
-            resized_volume.permute(0, 2, 1), 'YZ', slab_size, batch_size
-        )
-        pred_yz = pred_yz_permuted.permute(0, 2, 1)
+        pred_xz, pred_yz = self._predict_both_axes(resized_volume, slab_size, batch_size, parallel_axes)
 
         logging.info("Averaging predictions from both axes.")
         prob_map_tensor = (pred_xz + pred_yz) / 2.0
+        # Free the inputs before the final resize to lower peak memory.
+        del pred_xz, pred_yz, resized_volume
 
         if smoothing_sigma and smoothing_sigma > 0:
             logging.info(f"Applying 3D Gaussian smoothing with sigma={smoothing_sigma}...")
@@ -143,7 +170,7 @@ class TomoSlabPredictor:
             # Release cached memory on *this* predictor's GPU (not the current device).
             with torch.cuda.device(self.device):
                 torch.cuda.empty_cache()
-        
+
         logging.info("Probability map prediction complete.")
         return prob_map_np
 
@@ -162,12 +189,62 @@ class TomoSlabPredictor:
             **kwargs: Additional keyword arguments passed to `predict_probabilities`,
                       e.g., `slab_size`, `batch_size`, `smoothing_sigma`.
 
-        Returns:
+        Returns
+        -------
             The final binary slab mask as a 3D numpy array.
         """
         prob_map = self.predict_probabilities(input_tomogram=input_tomogram, **kwargs)
         logging.info(f"Binarizing probability map with threshold={binarize_threshold}")
         return (prob_map > binarize_threshold).astype(np.uint8)
+
+    @torch.no_grad()
+    def _predict_both_axes(
+        self, volume: torch.Tensor, slab_size: int, batch_size: int, parallel: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Predict along the XZ and YZ axes; returns both maps in the volume's orientation."""
+        if not parallel:
+            pred_xz = self._predict_single_axis_with_slab_blending(volume, 'XZ', slab_size, batch_size)
+            pred_yz = self._predict_single_axis_with_slab_blending(
+                volume.permute(0, 2, 1), 'YZ', slab_size, batch_size
+            ).permute(0, 2, 1)
+            return pred_xz, pred_yz
+
+        on_cuda = self.device.type == "cuda"
+        if on_cuda:
+            # Side streams must see the uploaded volume.
+            torch.cuda.synchronize(self.device)
+        else:
+            logging.info("parallel_axes on a non-CUDA device runs but is not expected to be faster.")
+
+        def run_axis(axis: str, view: torch.Tensor, position: int) -> torch.Tensor:
+            # The single-axis method is decorated with no_grad, which is thread-local, so
+            # it must be the thing the worker threads call.
+            def predict() -> torch.Tensor:
+                return self._predict_single_axis_with_slab_blending(
+                    view, axis, slab_size, batch_size, tqdm_position=position
+                )
+
+            if not on_cuda:
+                return predict()
+            # Stream(device) and stream() set the thread's current device; new threads
+            # would otherwise default to cuda:0.
+            stream = torch.cuda.Stream(self.device)
+            with torch.cuda.stream(stream):
+                out = predict()
+            stream.synchronize()
+            return out
+
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="axis") as pool:
+            future_xz = pool.submit(run_axis, 'XZ', volume, 0)
+            future_yz = pool.submit(run_axis, 'YZ', volume.permute(0, 2, 1), 1)
+            pred_xz, pred_yz = future_xz.result(), future_yz.result().permute(0, 2, 1)
+
+        if on_cuda:
+            # Allocated on side streams, consumed on the current one.
+            consumer = torch.cuda.current_stream(self.device)
+            pred_xz.record_stream(consumer)
+            pred_yz.record_stream(consumer)
+        return pred_xz, pred_yz
 
     @torch.no_grad()
     def _predict_raw_slab(self, slab_3d: torch.Tensor, batch_size: int) -> torch.Tensor:
@@ -185,20 +262,30 @@ class TomoSlabPredictor:
 
     @torch.no_grad()
     def _predict_single_axis_with_slab_blending(
-        self, volume_3d: torch.Tensor, axis: str, slab_size: int, batch_size: int
+        self,
+        volume_3d: torch.Tensor,
+        axis: str,
+        slab_size: int,
+        batch_size: int,
+        tqdm_position: Optional[int] = None,
     ) -> torch.Tensor:
-        """Optimized slab blending prediction for better memory efficiency."""
+        """Optimized slab blending prediction for better memory efficiency.
+
+        ``tqdm_position`` gives the progress bar its own terminal line when two axes
+        run at once; it is only passed to tqdm when set.
+        """
         if slab_size <= 1:
             logging.info(f"Predicting along {axis} axis (no slab blending)...")
             return self._predict_raw_slab(volume_3d, batch_size)
 
         logging.info(f"Predicting with slab blending along {axis} axis (slab_size={slab_size})...")
         num_slices = volume_3d.shape[1]
-        final_slices = []
+        output = None
+        tqdm_kwargs = {} if tqdm_position is None else {"position": tqdm_position}
         hann_window = torch.hann_window(slab_size, periodic=False, device=self.device)
         half_slab = slab_size // 2
 
-        for i in tqdm(range(num_slices), desc=f"Slab Blending ({axis} axis)", leave=False, ncols=80):
+        for i in tqdm(range(num_slices), desc=f"Slab Blending ({axis} axis)", leave=False, ncols=80, **tqdm_kwargs):
             start, end = max(0, i - half_slab), min(num_slices, i + half_slab + 1)
             pad_left = max(0, (i - half_slab) * -1)
             pad_right = max(0, (i + half_slab + 1) - num_slices)
@@ -222,9 +309,16 @@ class TomoSlabPredictor:
                 slice_input = robust_normalization(volume_3d[:, i, :]).unsqueeze(0).unsqueeze(0)
                 final_slice = torch.sigmoid(self.model(slice_input)).squeeze(0).squeeze(0)
 
-            final_slices.append(final_slice)
+            if output is None:
+                # Write into a preallocated volume rather than stacking, which would
+                # briefly need twice the output size.
+                output = torch.empty(
+                    final_slice.shape[0], num_slices, final_slice.shape[1],
+                    dtype=final_slice.dtype, device=final_slice.device,
+                )
+            output[:, i, :] = final_slice
 
-        return torch.stack(final_slices, dim=1)
+        return output
 
 
 def predict_probabilities(
@@ -246,7 +340,8 @@ def predict_probabilities(
                   `predict_probabilities` method, e.g., `slab_size`, `batch_size`,
                   `smoothing_sigma`, `compile_model`, `device`.
 
-    Returns:
+    Returns
+    -------
         The predicted 3D probability map as a numpy array.
     """
     compile_model = kwargs.pop("compile_model", True)
@@ -278,7 +373,8 @@ def predict_binary(
                   `predict_binary` method, e.g., `binarize_threshold`,
                   `slab_size`, `batch_size`, `compile_model`, `device`.
 
-    Returns:
+    Returns
+    -------
         The final binary slab mask as a 3D numpy array.
     """
     compile_model = kwargs.pop("compile_model", True)
